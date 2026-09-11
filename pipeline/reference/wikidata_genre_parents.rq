@@ -1,0 +1,5 @@
+SELECT ?mbid ?nom ?parentMbid ?parentNom WHERE {
+  ?g wdt:P8052 ?mbid ; rdfs:label ?nom .
+  FILTER(LANG(?nom)="en")
+  OPTIONAL { ?g wdt:P279 ?p . ?p wdt:P8052 ?parentMbid ; rdfs:label ?parentNom . FILTER(LANG(?parentNom)="en") }
+}

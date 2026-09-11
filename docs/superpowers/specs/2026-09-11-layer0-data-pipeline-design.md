@@ -1,6 +1,6 @@
 # Couche 0 — pipeline de données · conception
 
-- **Statut** : révision 2 — intègre les douze constats de la relecture indépendante du 2026-09-11. À relire.
+- **Statut** : révision 3 — intègre les deux passes de relecture indépendante du 2026-09-11. Déclarée prête pour un plan d'implémentation par le relecteur ; en attente de relecture humaine.
 - **Date** : 2026-09-11
 - **Dump de référence** : MusicBrainz JSON dumps `20260909-001002`
 - **Portée** : produire, de façon reproductible et testée, le jeu de données qui alimente la frise (couche 1). Aucune interface ici.
@@ -18,7 +18,7 @@ La couche 0 transforme deux dumps MusicBrainz en cinq tables :
 | `bands` | un groupe : ses preuves de dates, ses genres votés, sa provenance | 63 487 lignes |
 | `albums` | un point : une sortie d'album studio d'un groupe | 189 477 lignes |
 | `genres` | le vocabulaire utilisé par `bands` | 1 236 lignes |
-| `genre_parents` | les relations parent-enfant assertées entre genres | à mesurer (§6) |
+| `genre_parents` | les relations parent-enfant assertées entre genres | 1 195 arêtes via Wikidata ; source à trancher (§6) |
 | `density` | groupes présents par genre et par année | 51 161 cellules |
 
 Principe directeur, appliqué à chaque règle : **la sortie n'affirme jamais plus que ce que la source porte.** Une absence reste une absence : elle n'est ni imputée, ni prolongée, ni arbitrée en silence.
@@ -132,7 +132,9 @@ Règles de lecture, **déterministes** — le pipeline tranche toujours, sans in
 4. Une année de fin antérieure à l'année de formation est **absente** ; la formation est conservée.
 5. La précision au mois ou au jour n'est pas conservée en v1.
 
-Anomalies mesurées sur les 682 447 groupes, orchestres et chœurs : 34 formations illisibles, 7 fins illisibles, 15 formations dans le futur, 2 fins antérieures au début. Soit **58 cas, 0,0085 %**. Dans la population R1, quatre sont concernés : 3 fins illisibles et 1 fin antérieure au début (Blackdeath).
+Anomalies mesurées sur les 682 447 groupes, orchestres et chœurs : 34 formations illisibles, 7 fins illisibles, 15 formations dans le futur, 3 fins dans le futur, 2 fins antérieures au début. Soit **61 cas, 0,0089 %**. Dans la population R1, quatre sont concernés : 3 fins illisibles et 1 fin antérieure au début (Blackdeath).
+
+Chaque sous-règle de R2 alimente un compteur écrit dans `manifest.json` : sur un nouveau dump, une anomalie neutralisée reste visible au lieu d'être absorbée en silence.
 
 Les années antérieures à 1850 ne sont pas traitées par R2 : elles sortent du périmètre par R1. Il y en a 258 tous types confondus, dont 27 avec genre ; certaines sont exactes (Wiener Philharmoniker 1842), d'autres manifestement fausses (`0001-03-22`, `0011`, `0201`). Aucune n'est affirmée juste ou fausse par ce document.
 
@@ -156,9 +158,9 @@ Effets mesurés :
 
 Limites connues et acceptées :
 
-- Les albums crédités à plusieurs artistes distincts (9,12 % des albums) sont écartés.
+- Les albums crédités à plusieurs artistes distincts (9,10 % des albums) sont écartés.
 - Les éditions contemporaines parallèles sont conservées : les Beatles gardent leurs remontages nord-américains (*Meet The Beatles!*, *Beatles '65*…), réellement publiés à ces dates.
-- **Groupes marqués terminés sans fin valide** (1 741 groupes) : la borne haute retombe sur l'année du dump, faute d'autre information. La fenêtre ne les protège donc pas du bruit posthume ; NachClub et Flesh Field retiennent un album en 2026. Une correction R6 sourcée est le seul remède.
+- **Groupes marqués terminés sans fin valide** (1 741 groupes) : la borne haute retombe sur l'année du dump, faute d'autre information. La fenêtre ne les protège donc pas du bruit posthume : Flesh Field, formé en 1996 et marqué terminé, retient des albums jusqu'en 2026 ; 9 groupes de ce statut retiennent un album de 2026. Une correction R6 sourcée est le seul remède.
 - Même limite pour un groupe séparé dont la source ignore la séparation.
 
 ### R4 — Bord droit : des preuves, jamais une fin inventée
@@ -195,7 +197,7 @@ Le rendu de l'incertitude relève de la couche 1.
 - Fichier `pipeline/corrections.csv`, versionné : `mbid, champ, valeur, justification, source`. Chaque ligne cite une source vérifiable.
 - Appliqué après l'extraction ; les valeurs corrigées passent ensuite par R2 comme n'importe quelle autre.
 - **Le pipeline ne dépend jamais de ce fichier pour fonctionner** : R2 neutralise déjà toute anomalie. Une correction améliore la donnée, elle ne débloque rien.
-- La ligne de base (§9.3) se calcule avec un fichier de corrections **vide**. Un test séparé vérifie qu'appliquer les corrections ne modifie que les lignes visées.
+- La ligne de base (§9.3) **et les fixtures** (§9.1) se calculent avec un fichier de corrections **vide**. Un test dédié vérifie qu'une correction ne modifie que ce qui dépend du groupe visé : ses lignes de `bands` et d'`albums`, et les cellules de `density` de ses genres.
 - Garde-fou : un test échoue au-delà de 50 lignes. Au-delà, c'est une règle qui est fausse, pas la donnée.
 - Erreurs réelles identifiées parmi les groupes avec genre : **11** (6 formations illisibles, 3 fins illisibles, 1 formation en 2088, 1 fin antérieure au début), dont 4 dans la population R1. Elles doivent être corrigées **en amont** sur MusicBrainz par le porteur du projet.
 
@@ -210,11 +212,14 @@ Un groupe est **présent** l'année `y` si `y0 ≤ y ≤ fin_de_présence`, avec
 Justification :
 
 - **Une fin déclarée fait foi**, même si le dernier album est antérieur (un groupe actif sans disque pendant ses dernières années reste présent jusqu'à sa fin) et même si des albums lui sont postérieurs : Cardiacs, fin 2020, garde *LSD* (2025) comme point, mais n'est plus présent après 2020.
-- **Sans fin déclarée, le dernier album est la dernière preuve**, et `y0` la première : un groupe sans album est présent en `y0` seulement ; un groupe dont les seuls albums précèdent sa formation (Maroon 5, album de 1997, formé en 2001) est présent à partir de 2001.
+- **Sans fin déclarée, le dernier album est la dernière preuve**, et `y0` la première : un groupe sans album est présent en `y0` seulement, et un groupe dont tous les albums retenus précèdent sa formation aussi (25 cas, dont Polska Radio One : formé en 2015, albums en 2013 et 2014).
+- Mesuré : 6 574 groupes ont une fin déclarée postérieure à leur dernier album et restent présents jusqu'à cette fin ; 594 ont des albums postérieurs à leur fin déclarée et cessent d'être présents à cette fin.
 
 `density(genre, y)` compte les groupes présents portant ce genre. Un groupe à plusieurs genres compte dans chacun : **les totaux par genre ne s'additionnent pas.** Près du présent, la densité est une **borne basse** (voir R4).
 
 Volume mesuré : **51 161 cellules**, 1 236 genres, 1855 à 2026.
+
+La présence de chaque groupe est matérialisée dans une table intermédiaire `presence(mbid, y0, y_presence_end)`, calculée dans `transform` et non publiée : c'est sur elle que portent les invariants de présence (§9.2).
 
 ### R8 — Identité
 
@@ -262,7 +267,7 @@ Le schéma est fixé (`genre_parents`, §3.4) ; la source ne l'est pas.
 
 | Candidate | État mesuré |
 |---|---|
-| **Wikidata** `P279` (sous-classe de), jointe **par MBID** via `P8052` | L'export compte 2 179 MBID distincts portant `P8052`. Sur nos 1 236 genres : 1 236 ont un MBID MusicBrainz, 1 235 sont connus de Wikidata, 967 ont au moins un parent, **951 ont au moins un parent présent dans le vocabulaire (77 %)**. 224 genres ont plusieurs parents. 17 parents distincts sont hors vocabulaire. |
+| **Wikidata** `P279` (sous-classe de), jointe **par MBID** via `P8052` | L'export compte 2 179 MBID distincts portant `P8052`. Sur nos 1 236 genres : 1 236 ont un MBID MusicBrainz, 1 235 sont connus de Wikidata, 967 ont au moins un parent, **951 ont au moins un parent présent dans le vocabulaire (77 %)**. 224 genres ont plusieurs parents. 17 parents distincts sont hors vocabulaire — tous des genres MusicBrainz qu'aucun de nos groupes ne porte. Restreint au vocabulaire : 1 195 arêtes, aucun cycle, 285 racines ; seul `rapcore` n'a pas d'entrée Wikidata. Biais de mesure : l'export ne retient que les parents qui portent eux-mêmes `P8052` ; un parent Wikidata sans équivalent MusicBrainz est invisible. Requête versionnée : `pipeline/reference/wikidata_genre_parents.rq`. |
 | **MusicBrainz**, relation `subgenre` | Affichée sur les pages HTML des genres (« subgenre of: »). L'API ne la sert pas : `ws/2/genre/<id>?inc=genre-rels` répond HTTP 200 **sans** relations. Absente des dumps JSON (aucun dump `genre`). Présence dans le dump PostgreSQL : **non vérifiée**. |
 
 Joint par MBID, il n'existe pas de doublons de racines : `rock`, `pop`, `electronic` et `hip hop` correspondent chacun à une seule entrée Wikidata.
@@ -311,13 +316,13 @@ Des enregistrements **réels**, extraits du dump de référence pour les témoin
 
 | Groupe | MBID | Règle éprouvée | Mesuré |
 |---|---|---|---|
-| The Beatles | `b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d` | R3 : bruit posthume, bandes originales, multi-artistes écartés (*Hamburg 1961*) | 22 albums, 1963-1970 |
+| The Beatles | `b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d` | R3 : bruit posthume, bandes originales | 22 albums, 1963-1970 |
 | The Beatles (homonyme) | `9d953ee6-4ea6-4b0e-aea6-7268d380bef1` | R1, R8 : exclu | ni date ni genre |
 | The Beatles (homonyme) | `8d3431db-bc83-4dc2-93b8-0e46e31d09f7` | R1, R8 : exclu | ni date ni genre |
 | Joy Division | `9a58fda3-f4ed-4080-a3a5-f457aac9fcdd` | R2 : dates au mois | `1978-01` → `1980-05` |
 | New Order | `f1106b17-dcbb-45f6-b938-199ccfab50cc` | R4 : non terminé, sans fin | |
 | U2 | `a3cb23fc-acd3-4ce0-8f36-1e5aa6a18432` | R4 : actif, aucune fin produite | 30 albums, dernier 2025 |
-| Portishead | `8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11` | R3 : multi-artistes écarté (*Portishead + Epigones*) | |
+| Portishead | `8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11` | R4 : non terminé, sans fin ; R5 : genres votés | |
 | XTC | `97c86b2c-2765-46a2-aef8-76a7e24c430f` | R4, R7 : fin datée | fin 2006 |
 | Orange Juice | `e598d30e-4ce1-402e-94a7-6f44779da6b7` | R4 : fin datée | fin 1984 |
 | Orange Juice (homonyme) | `6959c3d5-3e7f-41bb-aba3-50e38225d23d` | R1, R8 : exclu | ni date ni genre |
@@ -328,11 +333,12 @@ Des enregistrements **réels**, extraits du dump de référence pour les témoin
 | Cleef | `1434b0d0-d647-421e-b345-1b9847045a52` | R2.1 : formation illisible → exclu | `????-??-18` |
 | Unheilig | `6dfa03fb-8b02-4055-b7cc-e48f426b13f8` | R2.1 et R3 : fin illisible, `ended = true`, borne haute = année du dump | `????-09` |
 | Wiener Philharmoniker | `d770374d-05e9-4ed3-a068-3fbd4e6e4dd6` | R1 : Orchestra exclu | |
-| Maroon 5 | `0ab49580-c84f-44d4-875f-d83760ea2cfe` | R3 borne basse, R7 : présence à partir de `y0` | album 1997, formé 2001 |
+| Maroon 5 | `0ab49580-c84f-44d4-875f-d83760ea2cfe` | R3 borne basse | album de 1997 retenu, formé 2001 |
+| Polska Radio One | `703c4c92-43f7-4268-9f85-0ca6f0cd1a22` | R7 : plancher `max(y0, y_last_album)` | formé 2015, albums 2013 et 2014 : présent en 2015 seulement |
 | Cardiacs | `f7338f2a-136b-4d5e-b099-5504cf997f58` | R3 marge posthume, R7 : fin déclarée fait foi | fin 2020, *LSD* 2025 |
-| Fleetwood Mac | `bd13909f-1c29-4c27-a874-d4aaf27c5b1a` | R3 marge posthume | fin 2022, album 2023 |
+| Fleetwood Mac | `bd13909f-1c29-4c27-a874-d4aaf27c5b1a` | R3 marge posthume ; R3.2 : album à deux artistes distincts, qu'aucun autre filtre n'exclut | fin 2022, album 2023 ; *The Biggest Thing Since Colossus* (1969) écarté |
 | ROD | `3cb86073-22d7-43d5-8f22-422b1e54988e` | R4, R7 : aucun album, présent en `y0` seulement | formé 1996 |
-| NachClub | `6842da50-a995-4387-ac39-b1b5f5a2b2fd` | R3 : terminé sans date, album tardif retenu | album 2026 |
+| Flesh Field | `212faddb-cd09-4fbc-9336-3ed7cadfba68` | R3 : terminé sans date, bruit tardif retenu | formé 1996, albums jusqu'en 2026 |
 | Demented Are Go! | `8a1f012c-acc1-4dda-878f-43ac02f2366f` | R3.2 : même artiste crédité deux fois, retenu | *The Day the Earth Spat Blood*, 1989 |
 
 ### 9.2 Invariants
@@ -349,7 +355,7 @@ Chacun est une requête qui doit renvoyer zéro ligne, exécutée sur les fixtur
 - tout genre de `bands` existe dans `genres`, et `genres.n_bands` égale le nombre de groupes qui le portent ;
 - tout `genre_parents` référence des genres existants, et le graphe est sans cycle ;
 - aucune cellule de `density` au-delà de l'année du dump ; `density.present ≤ genres.n_bands` ;
-- aucun groupe n'est présent après sa `y_end_declared` ;
+- dans `presence` : `y0 ≤ y_presence_end ≤ année du dump`, et `y_presence_end = y_end_declared` quand celle-ci existe ;
 - `corrections.csv` compte au plus 50 lignes.
 
 ### 9.3 Deux niveaux de test
