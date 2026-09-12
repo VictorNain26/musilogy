@@ -1,4 +1,4 @@
--- §6. Relation multivaluée : un genre peut avoir plusieurs parents assertés.
+-- §6. Multivalued relation: a genre can have several asserted parents.
 CREATE OR REPLACE TABLE genre_parents AS
 SELECT DISTINCT w.mbid AS genre_mbid, w.parentMbid AS parent_mbid, 'wikidata' AS source
 FROM read_csv('pipeline/reference/20260912-wikidata-genre-parents.csv', header=true) w

@@ -1,4 +1,4 @@
--- R3. Les types secondaires sont vides ou exactement {Soundtrack}.
+-- R3. Secondary types are empty or exactly {Soundtrack}.
 CREATE OR REPLACE TABLE albums AS
 SELECT
   b.mbid AS band_mbid,
