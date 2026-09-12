@@ -1,10 +1,13 @@
 """Exécution complète sur les extractions de la Task 3."""
+import sys
 from pathlib import Path
 
-import duckdb
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pipeline.build import build, check_invariants
-from pipeline.publish import publish
+import duckdb  # noqa: E402
+
+from pipeline.build import build, check_invariants  # noqa: E402
+from pipeline.publish import publish  # noqa: E402
 
 DUMP = "20260909-001002"
 con = duckdb.connect(":memory:")

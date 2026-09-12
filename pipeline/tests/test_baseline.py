@@ -9,7 +9,7 @@ WORK = Path("data/work")
 
 @pytest.mark.slow
 def test_reference_dump_matches_the_baseline():
-    if not (WORK / "artists.jsonl").exists():
+    if not (WORK / "artists.jsonl").exists() or not (WORK / "release_groups.jsonl").exists():
         pytest.skip("extractions absentes : lancer la Task 3")
     con = duckdb.connect(":memory:")
     build(con, Path("pipeline/sql"), WORK / "artists.jsonl",
