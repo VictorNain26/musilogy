@@ -5,6 +5,8 @@ from pathlib import Path
 
 import duckdb
 
+GENRE_PARENTS_CSV = Path("pipeline/reference/20260912-wikidata-genre-parents.csv")
+
 RAW_ARTIST_COLUMNS = (
     "{mbid:'VARCHAR', name:'VARCHAR', type:'VARCHAR', begin:'VARCHAR', "
     "\"end\":'VARCHAR', ended:'BOOLEAN', country:'VARCHAR', area:'VARCHAR', "
@@ -61,6 +63,12 @@ def build(
     for path in sorted(sql_dir.glob("*.sql")):
         if path.name.startswith("90_"):
             continue
+        if path.name == "60_genre_parents.sql" and not GENRE_PARENTS_CSV.exists():
+            con.execute(
+                "CREATE OR REPLACE TABLE genre_parents "
+                "(genre_mbid VARCHAR, parent_mbid VARCHAR, source VARCHAR)"
+            )
+            continue
         con.execute(path.read_text(encoding="utf-8"))
 
 
@@ -69,6 +77,7 @@ INVARIANTS = (
     "last_album_mismatch", "album_without_band", "album_out_of_window",
     "band_without_genre", "band_genres_out_of_order", "unknown_genre",
     "presence_out_of_range", "density_out_of_range", "density_above_band_count",
+    "genre_parent_unknown_genre", "genre_parent_cycle",
 )
 
 

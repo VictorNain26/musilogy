@@ -153,6 +153,25 @@ def test_density_out_of_range_is_reported(con):
     assert violations.get("density_out_of_range") == 1
 
 
+def test_genre_parent_unknown_genre_is_reported(con):
+    con.execute("INSERT INTO genre_parents VALUES ('inconnu', 'inconnu-parent', 'wikidata')")
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM genre_parents WHERE genre_mbid = 'inconnu'")
+    assert violations.get("genre_parent_unknown_genre") == 2
+
+
+def test_genre_parent_cycle_is_reported(con):
+    con.execute("INSERT INTO genres VALUES ('cycle-a', 'A', 0), ('cycle-b', 'B', 0)")
+    con.execute(
+        "INSERT INTO genre_parents VALUES "
+        "('cycle-a', 'cycle-b', 'wikidata'), ('cycle-b', 'cycle-a', 'wikidata')"
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM genre_parents WHERE genre_mbid IN ('cycle-a', 'cycle-b')")
+    con.execute("DELETE FROM genres WHERE genre_mbid IN ('cycle-a', 'cycle-b')")
+    assert violations.get("genre_parent_cycle") == 2
+
+
 def test_density_above_band_count_is_reported(con):
     row = con.execute("SELECT genre_mbid, year, present FROM density LIMIT 1").fetchone()
     genre_mbid, year, original_present = row

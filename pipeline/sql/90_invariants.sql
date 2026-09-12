@@ -40,3 +40,24 @@ CREATE OR REPLACE VIEW density_out_of_range AS
 CREATE OR REPLACE VIEW density_above_band_count AS
   SELECT d.genre_mbid FROM density d JOIN genres g USING (genre_mbid)
   WHERE d.present > g.n_bands;
+-- §9.2. genre_parents référence des genres existants aux deux extrémités.
+CREATE OR REPLACE VIEW genre_parent_unknown_genre AS
+  SELECT genre_mbid FROM genre_parents WHERE genre_mbid NOT IN (SELECT genre_mbid FROM genres)
+  UNION
+  SELECT parent_mbid FROM genre_parents WHERE parent_mbid NOT IN (SELECT genre_mbid FROM genres);
+-- §9.2. genre_parents est sans cycle. Le chemin parcouru par le CTE récursif
+-- ne repasse jamais par un nœud déjà visité : sa longueur est bornée par le
+-- nombre de genres, donc la requête termine que le graphe soit cyclique ou non.
+CREATE OR REPLACE VIEW genre_parent_cycle AS
+  WITH RECURSIVE walk(start_mbid, path, current_mbid, cycle) AS (
+    SELECT genre_mbid, [genre_mbid], parent_mbid, (genre_mbid = parent_mbid)
+    FROM genre_parents
+    UNION ALL
+    SELECT w.start_mbid,
+           list_append(w.path, w.current_mbid),
+           gp.parent_mbid,
+           list_contains(w.path, gp.parent_mbid) OR gp.parent_mbid = w.current_mbid
+    FROM walk w JOIN genre_parents gp ON gp.genre_mbid = w.current_mbid
+    WHERE NOT w.cycle
+  )
+  SELECT DISTINCT start_mbid AS genre_mbid FROM walk WHERE cycle;
