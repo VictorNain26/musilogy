@@ -30,6 +30,23 @@ def load_raw(con: duckdb.DuckDBPyConnection, artists: Path, rgs: Path) -> None:
     )
 
 
+def apply_corrections(con: duckdb.DuckDBPyConnection, corrections: Path | None) -> int:
+    if corrections is None:
+        return 0
+    con.execute(
+        "CREATE OR REPLACE TABLE corrections AS SELECT * FROM read_csv("
+        f"'{corrections.as_posix()}', header=true, "
+        "columns={mbid:'VARCHAR', champ:'VARCHAR', valeur:'VARCHAR', "
+        "justification:'VARCHAR', source:'VARCHAR'})"
+    )
+    for field in ("begin", "end"):
+        con.execute(
+            f'UPDATE raw_artists SET "{field}" = c.valeur FROM corrections c '
+            f"WHERE c.mbid = raw_artists.mbid AND c.champ = '{field}'"
+        )
+    return con.execute("SELECT count(*) FROM corrections").fetchone()[0]
+
+
 def build(
     con: duckdb.DuckDBPyConnection,
     sql_dir: Path,
@@ -39,6 +56,7 @@ def build(
     dump_year: int = 2026,
 ) -> None:
     load_raw(con, artists, rgs)
+    apply_corrections(con, corrections)
     con.execute(f"SET VARIABLE dump_year = {dump_year}")
     for path in sorted(sql_dir.glob("*.sql")):
         if path.name.startswith("90_"):
