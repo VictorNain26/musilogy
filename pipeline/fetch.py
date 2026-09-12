@@ -8,7 +8,7 @@ from pathlib import Path
 
 UA = "musilogy/0.1 ( victor.lenain26@gmail.com )"
 BASE = "https://data.metabrainz.org/pub/musicbrainz/data/json-dumps"
-DOWNLOAD_TIMEOUT = 30.0  # secondes, par connexion (connect + chaque read)
+DOWNLOAD_TIMEOUT = 30.0  # seconds, per connection (connect + each read)
 
 
 class ChecksumError(Exception):
@@ -40,7 +40,7 @@ def expected_sums(sums_path: Path) -> dict[str, str]:
 def verify(path: Path, expected: str) -> None:
     actual = sha256_file(path)
     if actual != expected:
-        raise ChecksumError(f"{path.name}: attendu {expected}, obtenu {actual}")
+        raise ChecksumError(f"{path.name}: expected {expected}, got {actual}")
 
 
 def download(url: str, dest: Path, timeout: float = DOWNLOAD_TIMEOUT) -> Path:
@@ -51,7 +51,7 @@ def download(url: str, dest: Path, timeout: float = DOWNLOAD_TIMEOUT) -> Path:
             while chunk := r.read(1 << 20):
                 out.write(chunk)
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
-        raise DownloadError(f"échec du téléchargement de {url} : {e}") from e
+        raise DownloadError(f"failed to download {url}: {e}") from e
     return dest
 
 
