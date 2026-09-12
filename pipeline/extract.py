@@ -23,7 +23,7 @@ def reduce_artist(rec: dict) -> dict | None:
         "type": rec.get("type"),
         "begin": span.get("begin"),
         "end": span.get("end"),
-        "ended": bool(span.get("ended")),
+        "ended": span.get("ended"),
         "country": rec.get("country"),
         "area": (rec.get("area") or {}).get("name"),
         "begin_area": (rec.get("begin-area") or {}).get("name"),
