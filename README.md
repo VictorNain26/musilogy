@@ -40,7 +40,7 @@ Chaque règle vit dans son fichier SQL numéroté (`src/musilogy/sql/`) ; **la n
 
 - **`20_albums` — Albums.** Un release-group compte comme album s'il est de type primaire `Album` (filtré dès l'extraction), crédité à un **seul artiste distinct** présent dans `bands`, daté dans `[1850, année du dump]`, et dont les types secondaires sont vides ou inclus dans `{Soundtrack, Demo}`.
 
-  Les démos sont acceptées parce qu'elles sont une preuve *contemporaine* d'activité précoce : 67,5 % des groupes ayant démo et album studio ont sorti la démo d'abord, 3 ans plus tôt en médiane parmi eux. Les albums live sont exclus pour la raison inverse : **MusicBrainz les date de leur publication, pas du concert** — 710 groupes ont un live daté plus de 20 ans après leur dernier studio, avec des titres qui portent eux-mêmes la vraie date (« Live in Paris (1966) », publié en 2024). Compilations, DJ-mix et remix sont exclus au même titre.
+  Les démos sont acceptées parce qu'elles sont une preuve *contemporaine* d'activité précoce : 67,5 % des artistes ayant démo et album studio ont sorti la démo d'abord, 3 ans plus tôt en médiane parmi eux. Les albums live sont exclus pour la raison inverse : **MusicBrainz les date de leur publication, pas du concert** — 710 groupes ont un live daté plus de 20 ans après leur dernier studio, avec des titres qui portent eux-mêmes la vraie date (« Live in Paris (1966) », publié en 2024). Compilations, DJ-mix et remix sont exclus au même titre.
 
 - **`30_bands_lifespan` — Ligne de vie et provenance.** Aux deux bords, **la preuve déclarée l'emporte, l'album prend le relais** : `y0` vaut l'année déclarée, sinon celle du premier album ; `y_end` la fin déclarée, sinon celle du dernier album. `y0_source` et `y_end_source` nomment la branche qui a produit la valeur. Les preuves brutes restent publiées à côté.
 
@@ -62,7 +62,7 @@ Chaque règle vit dans son fichier SQL numéroté (`src/musilogy/sql/`) ; **la n
 
 - **`80_members` — Membres.** Les relations `member of band`, dédoublonnées, avec leurs années lues par la même macro stricte que partout ailleurs.
 
-- **`90_invariants` — Contrôles.** 26 vues qui doivent toutes renvoyer zéro ligne ; le nom de la vue *est* le nom de l'invariant. Chacune **recalcule indépendamment** ce qu'elle vérifie : une revue a montré qu'un invariant réutilisant la formule de production restait muet sur 265 violations réelles. Les bornes contractuelles y sont codées en dur, aux deux extrémités, sans relire les variables de session de la production ; changer de dump impose donc une modification délibérée de ce fichier — c'est l'intention.
+- **`90_invariants` — Contrôles.** Des vues qui doivent toutes renvoyer zéro ligne ; le nom de la vue *est* le nom de l'invariant. Chacune **recalcule indépendamment** ce qu'elle vérifie : une revue a montré qu'un invariant réutilisant la formule de production restait muet sur 265 violations réelles. Les bornes contractuelles y sont codées en dur, aux deux extrémités, sans relire les variables de session de la production ; changer de dump impose donc une modification délibérée de ce fichier — c'est l'intention.
 
 Quatre bornes sont des variables de session posées par `build()` : `dump_year`, `min_year`, `multi_artist_drop_limit` et `min_candidate_credits`.
 
@@ -89,7 +89,7 @@ Le coût mesuré de la règle est un faux positif, `mincecore` (73,1 % sur 216 c
 - `web/genres.json.gz` — le vocabulaire, avec `density_eligible`, `n_candidate_credits` et `multi_artist_drop_pct` ;
 - `web/density.json.gz` — l'agrégat par genre et par année.
 
-`density` est publié plutôt que laissé à recalculer, et `density_eligible` voyage désormais avec le vocabulaire comme une colonne à part entière — la règle elle-même, pas seulement les deux mesures qui la motivent, elles aussi publiées à côté pour qui veut l'auditer plutôt que la croire sur parole. Un consommateur n'a donc plus de seuil à coder en dur : sans cette colonne, reconstruire la densité depuis les seuls artefacts web donne 53 029 cellules au lieu de 52 201 — les 828 cellules des douze genres savants que la couche 0 refuse délibérément de publier. Réimplémenter une règle, c'est là qu'elle se perd.
+`density` est publié plutôt que laissé à recalculer, et `density_eligible` voyage désormais avec le vocabulaire comme une colonne à part entière — la règle elle-même, pas seulement les deux mesures qui la motivent, elles aussi publiées à côté pour qui veut l'auditer plutôt que la croire sur parole. Un consommateur n'a donc plus de seuil à coder en dur : sans cette colonne, reconstruire la densité depuis les seuls artefacts web donne 53 029 cellules au lieu de 52 201 — les 828 cellules des treize genres que la couche 0 refuse délibérément de publier. Réimplémenter une règle, c'est là qu'elle se perd.
 
 Chaque ligne porte son `mbid` — la clé de jointure vers `density`, `members` et MusicBrainz — ses `genres`, et les deux bords avec leurs preuves brutes des deux côtés.
 
