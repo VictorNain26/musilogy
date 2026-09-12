@@ -34,7 +34,7 @@ build(con, Path("pipeline/sql"), ARTISTS_JSONL, RELEASE_GROUPS_JSONL,
 
 violations = check_invariants(con, Path("pipeline/sql"))
 if violations:
-    raise SystemExit(f"invariants violés : {violations}")
+    raise SystemExit(f"invariants violated: {violations}")
 
 manifest = publish(con, Path("data/out") / DUMP, DUMP, Path("pipeline/corrections.csv"))
 print(manifest["counts"])
