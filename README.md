@@ -86,9 +86,14 @@ Le coût mesuré de la règle est un faux positif, `mincecore` (73,1 % sur 216 c
 
 - `web/bands_timeline.json.gz` — les artistes dont `y0` est connu, donc plaçables sur une frise (15,6 Mo) ;
 - `web/bands_rest.json.gz` — les autres, chargeables à la demande (9,4 Mo) ;
-- `web/genres.json.gz` — le vocabulaire et sa fiabilité (38 Ko).
+- `web/genres.json.gz` — le vocabulaire, avec `n_candidate_albums` et `multi_artist_drop_pct` ;
+- `web/density.json.gz` — l'agrégat par genre et par année.
+
+`density` est publié plutôt que laissé à recalculer, et les deux colonnes de fiabilité voyagent avec le vocabulaire, pour une raison mesurée : sans elles, un consommateur qui reconstruit la densité depuis les seuls artefacts web obtient 53 029 cellules au lieu de 52 201 — il réinvente les 828 cellules des douze genres savants que la couche 0 refuse délibérément de publier. Réimplémenter une règle, c'est là qu'elle se perd.
 
 Chaque ligne porte son `mbid` — la clé de jointure vers `density`, `members` et MusicBrainz — ses `genres`, et les deux bords avec leurs preuves brutes des deux côtés.
+
+**Attention à `y_presence_end` quand la fin est inconnue.** La colonne vaut alors `y0` : le groupe se réduit à une barre d'un an. Cela concerne **22 496 groupes sur les 84 722 éligibles à la densité, soit 26,6 %** — dont 9 788 qui ne sont pas terminés et n'ont aucune preuve de fin. Un groupe formé en 2026 est donc un point, pas une barre ouverte. Pour rendre cela honnêtement, la couche 1 doit lire `ended` et `y_end_source` plutôt que `y_presence_end` seul : c'est le rendu faux le plus probable d'une première intégration.
 
 **Deux sujets restent ouverts pour la couche 1.** Le poids : 15,6 Mo gzip pour la frise, non pas à cause des genres (1,7 Mo) mais des identifiants eux-mêmes, des UUID de 36 octets qui ne se compressent pas ; un chargement initial complet n'est pas réaliste sur mobile, et le découpage par genre ou par période lui revient. Et l'absence de hiérarchie : les 1 348 genres sont **plats**, sans regroupement possible, faute de source fiable — parcourir cette liste à la main n'est pas une interface.
 
@@ -111,7 +116,7 @@ Provenance des bords, sur le dump de référence :
 
 - **Une fin dérivée d'un album n'est pas une fin déclarée.** Elle est marquée `y_end_source = 'last_album'`. Parmi les groupes concernés ayant au moins deux albums, **3,38 % ont un dernier album isolé de plus de 15 ans** du précédent (1,04 % au-delà de 25) : des rééditions de fonds historiques qui étirent la ligne de vie. Les écarter demanderait un seuil arbitraire ; l'étiquette de provenance laisse la couche 1 trancher.
 
-- **Le genre est un filtre de notoriété communautaire, et il est daté.** Part d'artistes sans aucun genre, par époque de formation : 69,3 % pour 1967-1979, 72,6 % pour 1980-1999, 78,9 % pour 2000-2014, **82,7 % depuis 2023**. La densité près du présent est doublement une borne basse : par la présence, et parce que les groupes récents sont moins tagués.
+- **Le genre est un filtre de notoriété communautaire, et il est daté.** Part d'artistes sans aucun genre, par époque de formation : 69,3 % pour 1967-1979, 72,6 % pour 1980-1999, 78,9 % pour 2000-2014, **82,7 % depuis 2023**. La densité près du présent est doublement une borne basse : par la présence, et parce que les groupes récents sont moins tagués. **L'ordre de grandeur est considérable** : la densité totale culmine en 2016 à 67 567 puis tombe à 11 276 en 2026, soit **−83 % en dix ans**, presque entièrement par artefact. La dernière décennie ne se lit pas comme une tendance.
 
 - **`density` ignore les orchestres et chœurs**, faute d'un modèle de ligne de vie comparable — ce qui écartait déjà 37,9 % du répertoire savant avant toute mesure. Ils restent dans `bands`, `albums` et `members`.
 

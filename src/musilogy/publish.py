@@ -38,7 +38,15 @@ BANDS_WEB_COLUMNS = [
     "genres",
 ]
 WEB_COLUMNS = {
-    "genres": ["genre_mbid", "name", "n_bands"],
+    # The two reliability columns are not decoration: without them a web-only
+    # consumer cannot apply the exclusion rule of 60_density.sql, recomputes
+    # density from bands_timeline alone, and silently invents the 828 cells of
+    # the art-music genres this layer deliberately withholds.
+    "genres": ["genre_mbid", "name", "n_bands", "n_candidate_albums", "multi_artist_drop_pct"],
+    # Published too, so the frieze reads the aggregate rather than rebuilding
+    # it: a consumer that recomputes it reimplements a rule, and reimplementing
+    # is where the exclusion gets lost.
+    "density": ["genre_mbid", "year", "present"],
 }
 
 
@@ -78,7 +86,9 @@ def publish(
     corrections: Path | None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "web").mkdir(exist_ok=True)
+    web_dir = out_dir / "web"
+    web_dir.mkdir(exist_ok=True)
+    written: set[str] = set()
 
     counts: dict[str, int] = {}
     for name in TABLES:
@@ -94,7 +104,8 @@ def publish(
         payload = json.dumps(
             _columnar(con, table, columns), ensure_ascii=False, separators=(",", ":")
         ).encode()
-        (out_dir / "web" / f"{table}.json.gz").write_bytes(gzip.compress(payload, 9))
+        (web_dir / f"{table}.json.gz").write_bytes(gzip.compress(payload, 9))
+        written.add(f"{table}.json.gz")
 
     # Split in two: layer 1's frieze only needs the timeline-eligible bands
     # (y0 IS NOT NULL); pulling in the rest would double the payload for no
@@ -110,7 +121,16 @@ def publish(
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode()
-        (out_dir / "web" / f"{name}.json.gz").write_bytes(gzip.compress(payload, 9))
+        (web_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload, 9))
+        written.add(f"{name}.json.gz")
+
+    # Prune what this run did not write. Without it an export dropped from a
+    # previous schema survives in the delivered directory: a consumer globbing
+    # web/*.json.gz then loads a file describing a population that no longer
+    # exists, joinable to nothing.
+    for stale in web_dir.glob("*.json.gz"):
+        if stale.name not in written:
+            stale.unlink()
 
     manifest = {
         "dump": dump,

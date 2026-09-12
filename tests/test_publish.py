@@ -75,6 +75,63 @@ def test_web_export_carries_what_a_consumer_needs_to_join_and_to_audit(con, tmp_
     assert set(exported) <= vocabulary
 
 
+def test_web_artifacts_alone_reproduce_the_published_density(tmp_path):
+    # The regression that matters. A web-only consumer applies the rule of
+    # 60_density.sql to bands_timeline + genres. If the reliability columns do
+    # not travel, it cannot see which genres are excluded and rebuilds the
+    # cells this layer withholds — on the reference dump, 828 of them, on
+    # exactly the art-music genres the exclusion targets.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(tmp_path, artists, release_groups)
+    out = tmp_path / "out"
+    publish(c, out, DUMP, None)
+
+    vocabulary = read_web(out, "genres")
+    excluded = {
+        mbid
+        for mbid, pct, n in zip(
+            vocabulary["genre_mbid"],
+            vocabulary["multi_artist_drop_pct"],
+            vocabulary["n_candidate_albums"],
+            strict=True,
+        )
+        if pct is not None and pct >= 50 and n >= 200
+    }
+    assert excluded, "the scenario must exercise at least one excluded genre"
+
+    timeline = read_web(out, "bands_timeline")
+    rebuilt = set()
+    for i, kind in enumerate(timeline["type"]):
+        y0, end = timeline["y0"][i], timeline["y_presence_end"][i]
+        if kind != "Group" or y0 is None or end is None:
+            continue
+        for genre in timeline["genres"][i] or []:
+            if genre["mbid"] in excluded:
+                continue
+            rebuilt |= {(genre["mbid"], year) for year in range(y0, end + 1)}
+
+    published = {
+        (mbid, year)
+        for mbid, year in zip(
+            read_web(out, "density")["genre_mbid"], read_web(out, "density")["year"], strict=True
+        )
+    }
+    assert rebuilt == published
+
+
+def test_publish_removes_a_web_export_it_no_longer_writes(con, tmp_path):
+    # A schema change leaves the previous export behind: publish() used to
+    # write only, never delete, so a file from an older population stayed in
+    # the delivered directory next to the current ones.
+    web = tmp_path / "web"
+    web.mkdir(parents=True)
+    stale = web / "bands.json.gz"
+    stale.write_bytes(gzip.compress(b'{"name":[]}'))
+    publish(con, tmp_path, DUMP, None)
+    assert not stale.exists()
+    assert (web / "bands_timeline.json.gz").exists()
+
+
 def test_name_is_not_an_identity_in_the_web_export(con, tmp_path):
     # Three homonym witnesses: keyed by `name`, layer 1 would merge distinct
     # artists. This is why the export carries mbid.
