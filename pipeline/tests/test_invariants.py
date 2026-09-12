@@ -14,9 +14,15 @@ def con():
     return c
 
 
-def test_build_skips_90_files(con):
+def test_build_skips_90_files():
+    # Connexion dédiée, jamais passée à check_invariants : sur `con` (portée
+    # module, partagée par tous les tests du fichier), une exécution
+    # antérieure de 90_invariants.sql y aurait déjà créé duplicate_band et ce
+    # test ne dépendrait plus que de son rang dans le fichier.
+    c = duckdb.connect(":memory:")
+    build(c, SQL, FIX / "artists.jsonl", FIX / "release_groups.jsonl", None)
     with pytest.raises(duckdb.CatalogException):
-        con.execute("SELECT * FROM duplicate_band")
+        c.execute("SELECT * FROM duplicate_band")
 
 
 def test_fixtures_satisfy_every_invariant(con):
@@ -106,7 +112,10 @@ def test_album_out_of_window_is_reported(con):
     original = con.execute(
         "SELECT y FROM albums WHERE rg_mbid = ?", [rg_mbid]
     ).fetchone()[0]
-    con.execute("UPDATE albums SET y = 2026 WHERE rg_mbid = ?", [rg_mbid])
+    # 2027 : au-delà de dump_year (2026) pour *toute* bande, quelle que soit
+    # celle que LIMIT 1 retourne. 2026 tombait dans la fenêtre d'acceptation
+    # de 133 des 181 bandes des fixtures et ne passait que par chance de tri.
+    con.execute("UPDATE albums SET y = 2027 WHERE rg_mbid = ?", [rg_mbid])
     violations = dict(check_invariants(con, SQL))
     con.execute("UPDATE albums SET y = ? WHERE rg_mbid = ?", [original, rg_mbid])
     assert violations.get("album_out_of_window") == 1
@@ -195,6 +204,19 @@ def test_presence_out_of_range_is_reported(con):
     assert violations.get("presence_out_of_range") == 1
 
 
+def test_presence_end_mismatch_is_reported(con):
+    mbid = con.execute("SELECT mbid FROM presence LIMIT 1").fetchone()[0]
+    original = con.execute(
+        "SELECT y_presence_end FROM bands WHERE mbid = ?", [mbid]
+    ).fetchone()[0]
+    con.execute(
+        "UPDATE bands SET y_presence_end = ? WHERE mbid = ?", [original - 1, mbid]
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute("UPDATE bands SET y_presence_end = ? WHERE mbid = ?", [original, mbid])
+    assert violations.get("presence_end_mismatch") == 1
+
+
 def test_density_out_of_range_is_reported(con):
     row = con.execute("SELECT * FROM density LIMIT 1").fetchone()
     cols = [d[0] for d in con.description]
@@ -208,6 +230,28 @@ def test_density_out_of_range_is_reported(con):
         [row[cols.index("genre_mbid")]],
     )
     assert violations.get("density_out_of_range") == 1
+
+
+def test_density_out_of_range_is_reported_below_1850(con):
+    row = con.execute("SELECT * FROM density LIMIT 1").fetchone()
+    cols = [d[0] for d in con.description]
+    con.execute(
+        f"INSERT INTO density VALUES ({', '.join('?' for _ in cols)})",
+        [row[cols.index("genre_mbid")], 1700, row[cols.index("present")]],
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute(
+        "DELETE FROM density WHERE genre_mbid = ? AND year = 1700",
+        [row[cols.index("genre_mbid")]],
+    )
+    assert violations.get("density_out_of_range") == 1
+
+
+def test_density_above_band_count_catches_a_genre_absent_from_the_vocabulary(con):
+    con.execute("INSERT INTO density VALUES ('inconnu', 1900, 1)")
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM density WHERE genre_mbid = 'inconnu' AND year = 1900")
+    assert violations.get("density_above_band_count") == 1
 
 
 def test_genre_parent_unknown_genre_is_reported(con):
@@ -255,3 +299,20 @@ def test_corrections_file_too_large_is_reported(con):
     violations = dict(check_invariants(con, SQL))
     con.execute("DELETE FROM corrections")
     assert violations.get("corrections_file_too_large") == 1
+
+
+def test_corrections_invalid_is_reported(con):
+    # Trois no-ops silencieux réels : un mbid inconnu, un champ mal orthographié
+    # (typo) et un champ non supporté par apply_corrections.
+    mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    con.execute(
+        "INSERT INTO corrections VALUES "
+        "('inconnu', 'begin', '2000', 'j', 's'), "
+        f"('{mbid}', 'Begin', '2000', 'j', 's'), "
+        f"('{mbid}', 'country', 'FR', 'j', 's')"
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute(
+        "DELETE FROM corrections WHERE mbid = 'inconnu' OR field IN ('Begin', 'country')"
+    )
+    assert violations.get("corrections_invalid") == 3

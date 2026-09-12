@@ -80,7 +80,7 @@ def test_manifest_carries_git_sha(con, tmp_path):
 
 def test_manifest_carries_corrections_checksum_when_present(con, tmp_path):
     corrections = tmp_path / "corrections.csv"
-    corrections.write_text("mbid,champ,valeur,justification,source\n", encoding="utf-8")
+    corrections.write_text("mbid,field,value,justification,source\n", encoding="utf-8")
     manifest = publish(con, tmp_path, DUMP, corrections)
     assert manifest["corrections_sha256"] == sha256_file(corrections)
 

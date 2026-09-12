@@ -11,7 +11,7 @@ BLACKDEATH = "53fc0417-7585-490c-b2ea-5f9737e14c0f"
 def build_with(tmp_path, lines):
     path = tmp_path / "corrections.csv"
     path.write_text(
-        "mbid,champ,valeur,justification,source\n" + "".join(lines), encoding="utf-8"
+        "mbid,field,value,justification,source\n" + "".join(lines), encoding="utf-8"
     )
     con = duckdb.connect(":memory:")
     build(con, SQL, FIX / "artists.jsonl", FIX / "release_groups.jsonl", path)

@@ -69,10 +69,29 @@ def test_self_reference_is_excluded_by_the_production_sql(tmp_path):
     ]
 
 
-def test_build_creates_empty_table_when_archive_is_missing(monkeypatch, tmp_path):
+def test_genre_parents_csv_resolves_independently_of_cwd(tmp_path, monkeypatch):
+    # GENRE_PARENTS_CSV se résout depuis build.py (__file__), pas depuis le
+    # cwd du process : lancé d'un autre répertoire, l'archive reste trouvée
+    # et genre_parents n'est pas silencieusement publiée vide.
+    sql_dir = SQL.resolve()
+    artists = (FIX / "artists.jsonl").resolve()
+    rgs = (FIX / "release_groups.jsonl").resolve()
+    monkeypatch.chdir(tmp_path)
+    c = duckdb.connect(":memory:")
+    build(c, sql_dir, artists, rgs, None)
+    assert c.execute("SELECT count(*) FROM genre_parents").fetchone()[0] > 0
+
+
+def test_build_creates_empty_table_when_archive_is_missing(monkeypatch, tmp_path, caplog):
+    import logging
+
     import pipeline.build as build_mod
 
     monkeypatch.setattr(build_mod, "GENRE_PARENTS_CSV", tmp_path / "absent.csv")
     c = duckdb.connect(":memory:")
-    build(c, SQL, FIX / "artists.jsonl", FIX / "release_groups.jsonl", None)
+    with caplog.at_level(logging.WARNING, logger="pipeline.build"):
+        build(c, SQL, FIX / "artists.jsonl", FIX / "release_groups.jsonl", None)
     assert c.execute("SELECT count(*) FROM genre_parents").fetchall() == [(0,)]
+    assert any("genre_parents" in r.message for r in caplog.records), (
+        "le fallback en table vide doit logger un avertissement"
+    )

@@ -52,11 +52,20 @@ CREATE OR REPLACE VIEW presence_out_of_range AS
   SELECT p.mbid FROM presence p JOIN bands b USING (mbid)
   WHERE p.y_presence_end < p.y0 OR p.y_presence_end > getvariable('dump_year')
      OR (b.y_end_declared IS NOT NULL AND p.y_presence_end <> b.y_end_declared);
+-- Même idiome qu'20_albums.sql/last_album_mismatch, pour son jumeau
+-- 30_presence.sql : bands.y_presence_end (publié en Parquet et
+-- web/bands.json.gz) doit rester identique à presence.y_presence_end (dont
+-- dérive density), sans quoi les deux artefacts publiés peuvent diverger.
+CREATE OR REPLACE VIEW presence_end_mismatch AS
+  SELECT b.mbid FROM bands b JOIN presence p USING (mbid)
+  WHERE b.y_presence_end IS DISTINCT FROM p.y_presence_end;
 CREATE OR REPLACE VIEW density_out_of_range AS
-  SELECT genre_mbid FROM density WHERE year > getvariable('dump_year');
+  SELECT genre_mbid FROM density WHERE year > getvariable('dump_year') OR year < 1850;
+-- LEFT JOIN : un genre_mbid absent du vocabulaire ne doit pas faire
+-- disparaître la ligne de density de son propre contrôle.
 CREATE OR REPLACE VIEW density_above_band_count AS
-  SELECT d.genre_mbid FROM density d JOIN genres g USING (genre_mbid)
-  WHERE d.present > g.n_bands;
+  SELECT d.genre_mbid FROM density d LEFT JOIN genres g USING (genre_mbid)
+  WHERE g.genre_mbid IS NULL OR d.present > g.n_bands;
 -- §9.2. genre_parents référence des genres existants aux deux extrémités.
 CREATE OR REPLACE VIEW genre_parent_unknown_genre AS
   SELECT genre_mbid FROM genre_parents WHERE genre_mbid NOT IN (SELECT genre_mbid FROM genres)
@@ -82,3 +91,10 @@ CREATE OR REPLACE VIEW genre_parent_cycle AS
 -- par apply_corrections, donc disponible sans dépendance au dump.
 CREATE OR REPLACE VIEW corrections_file_too_large AS
   SELECT count(*) AS n FROM corrections HAVING count(*) > 50;
+-- Une ligne qui ne touche aucun raw_artists ou porte un champ hors {begin,
+-- end} est chargée (compte dans le plafond de 50) sans jamais rien changer :
+-- un no-op silencieux, pas une correction.
+CREATE OR REPLACE VIEW corrections_invalid AS
+  SELECT c.mbid, c.field FROM corrections c
+  WHERE c.field NOT IN ('begin', 'end')
+     OR c.mbid NOT IN (SELECT mbid FROM raw_artists);

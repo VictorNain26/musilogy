@@ -1,11 +1,21 @@
 """Enchaîne les fichiers SQL de transformation sur une connexion DuckDB."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import duckdb
 
-GENRE_PARENTS_CSV = Path("pipeline/reference/20260912-wikidata-genre-parents.csv")
+logger = logging.getLogger(__name__)
+
+# Chemin résolu depuis ce fichier, pas depuis le cwd du process : le même
+# nom relatif est aussi codé en dur dans 60_genre_parents.sql (lu et exécuté
+# tel quel par DuckDB), substitué ci-dessous avant exécution pour que les
+# deux occurrences pointent la même source, quel que soit le cwd d'appel.
+GENRE_PARENTS_CSV = (
+    Path(__file__).resolve().parent / "reference" / "20260912-wikidata-genre-parents.csv"
+)
+GENRE_PARENTS_LITERAL = "pipeline/reference/20260912-wikidata-genre-parents.csv"
 
 RAW_ARTIST_COLUMNS = (
     "{mbid:'VARCHAR', name:'VARCHAR', type:'VARCHAR', begin:'VARCHAR', "
@@ -38,20 +48,20 @@ def apply_corrections(con: duckdb.DuckDBPyConnection, corrections: Path | None) 
         # les fixtures avec corrections=None, et l'invariant
         # corrections_file_too_large lit cette table sans dépendre du dump.
         con.execute(
-            "CREATE OR REPLACE TABLE corrections (mbid VARCHAR, champ VARCHAR, "
-            "valeur VARCHAR, justification VARCHAR, source VARCHAR)"
+            "CREATE OR REPLACE TABLE corrections (mbid VARCHAR, field VARCHAR, "
+            "value VARCHAR, justification VARCHAR, source VARCHAR)"
         )
         return 0
     con.execute(
         "CREATE OR REPLACE TABLE corrections AS SELECT * FROM read_csv("
         f"'{corrections.as_posix()}', header=true, "
-        "columns={mbid:'VARCHAR', champ:'VARCHAR', valeur:'VARCHAR', "
+        "columns={mbid:'VARCHAR', field:'VARCHAR', value:'VARCHAR', "
         "justification:'VARCHAR', source:'VARCHAR'})"
     )
     for field in ("begin", "end"):
         con.execute(
-            f'UPDATE raw_artists SET "{field}" = c.valeur FROM corrections c '
-            f"WHERE c.mbid = raw_artists.mbid AND c.champ = '{field}'"
+            f'UPDATE raw_artists SET "{field}" = c.value FROM corrections c '
+            f"WHERE c.mbid = raw_artists.mbid AND c.field = '{field}'"
         )
     return con.execute("SELECT count(*) FROM corrections").fetchone()[0]
 
@@ -70,13 +80,20 @@ def build(
     for path in sorted(sql_dir.glob("*.sql")):
         if path.name.startswith("90_"):
             continue
-        if path.name == "60_genre_parents.sql" and not GENRE_PARENTS_CSV.exists():
-            con.execute(
-                "CREATE OR REPLACE TABLE genre_parents "
-                "(genre_mbid VARCHAR, parent_mbid VARCHAR, source VARCHAR)"
-            )
-            continue
-        con.execute(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        if path.name == "60_genre_parents.sql":
+            if not GENRE_PARENTS_CSV.exists():
+                logger.warning(
+                    "source genre_parents introuvable (%s) : table publiée vide",
+                    GENRE_PARENTS_CSV,
+                )
+                con.execute(
+                    "CREATE OR REPLACE TABLE genre_parents "
+                    "(genre_mbid VARCHAR, parent_mbid VARCHAR, source VARCHAR)"
+                )
+                continue
+            text = text.replace(GENRE_PARENTS_LITERAL, GENRE_PARENTS_CSV.as_posix())
+        con.execute(text)
 
 
 INVARIANTS = (
@@ -85,9 +102,10 @@ INVARIANTS = (
     "album_extra_secondary_type",
     "band_without_genre", "band_genres_out_of_order", "unknown_genre",
     "genre_n_bands_mismatch",
-    "presence_out_of_range", "density_out_of_range", "density_above_band_count",
+    "presence_out_of_range", "presence_end_mismatch",
+    "density_out_of_range", "density_above_band_count",
     "genre_parent_unknown_genre", "genre_parent_cycle",
-    "corrections_file_too_large",
+    "corrections_file_too_large", "corrections_invalid",
 )
 
 
