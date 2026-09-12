@@ -1,4 +1,4 @@
-"""Exécution complète sur les extractions de la Task 3."""
+"""Exécution complète : fetch → extract (si besoin) → transform → validate → publish."""
 import sys
 from pathlib import Path
 
@@ -7,12 +7,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import duckdb  # noqa: E402
 
 from pipeline.build import build, check_invariants  # noqa: E402
+from pipeline.extract import extract, reduce_artist, reduce_release_group  # noqa: E402
+from pipeline.fetch import fetch_dump  # noqa: E402
 from pipeline.publish import publish  # noqa: E402
 
 DUMP = "20260909-001002"
+RAW_DIR = Path("data/raw")
+WORK_DIR = Path("data/work")
+SUMS_PATH = Path("pipeline/reference") / f"{DUMP}.SHA256SUMS"
+ARTISTS_JSONL = WORK_DIR / "artists.jsonl"
+RELEASE_GROUPS_JSONL = WORK_DIR / "release_groups.jsonl"
+
+
+def fetch_and_extract() -> None:
+    """§5.1 fetch → extract. Rejouable : fetch_dump ne retélécharge pas une
+    archive déjà vérifiée, extract réécrit sa sortie à chaque appel."""
+    artist_archive = fetch_dump(DUMP, "artist.tar.xz", RAW_DIR, SUMS_PATH)
+    rg_archive = fetch_dump(DUMP, "release-group.tar.xz", RAW_DIR, SUMS_PATH)
+    extract(artist_archive, reduce_artist, ARTISTS_JSONL)
+    extract(rg_archive, reduce_release_group, RELEASE_GROUPS_JSONL)
+
+
+if not ARTISTS_JSONL.exists() or not RELEASE_GROUPS_JSONL.exists():
+    fetch_and_extract()
+
 con = duckdb.connect(":memory:")
-build(con, Path("pipeline/sql"), Path("data/work/artists.jsonl"),
-      Path("data/work/release_groups.jsonl"), Path("pipeline/corrections.csv"))
+build(con, Path("pipeline/sql"), ARTISTS_JSONL, RELEASE_GROUPS_JSONL,
+      Path("pipeline/corrections.csv"))
 
 violations = check_invariants(con, Path("pipeline/sql"))
 if violations:

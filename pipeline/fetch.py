@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 import hashlib
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 UA = "musilogy/0.1 ( victor.lenain26@gmail.com )"
 BASE = "https://data.metabrainz.org/pub/musicbrainz/data/json-dumps"
+DOWNLOAD_TIMEOUT = 30.0  # secondes, par connexion (connect + chaque read)
 
 
 class ChecksumError(Exception):
+    pass
+
+
+class DownloadError(Exception):
     pass
 
 
@@ -37,12 +43,15 @@ def verify(path: Path, expected: str) -> None:
         raise ChecksumError(f"{path.name}: attendu {expected}, obtenu {actual}")
 
 
-def download(url: str, dest: Path) -> Path:
+def download(url: str, dest: Path, timeout: float = DOWNLOAD_TIMEOUT) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req) as r, open(dest, "wb") as out:
-        while chunk := r.read(1 << 20):
-            out.write(chunk)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as out:
+            while chunk := r.read(1 << 20):
+                out.write(chunk)
+    except (urllib.error.HTTPError, urllib.error.URLError) as e:
+        raise DownloadError(f"échec du téléchargement de {url} : {e}") from e
     return dest
 
 
