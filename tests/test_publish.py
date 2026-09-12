@@ -23,7 +23,6 @@ def test_publish_writes_every_table(con, tmp_path):
         assert name in manifest["counts"]
     assert manifest["dump"] == DUMP
     assert "genre_parents" not in manifest["counts"]
-    assert not (tmp_path / "genre_parents.parquet").exists()
 
 
 def test_members_is_archived_but_stays_out_of_the_web_export(con, tmp_path):
@@ -118,6 +117,15 @@ def test_web_artifacts_alone_reproduce_the_published_density(tmp_path):
         )
     }
     assert rebuilt == published
+
+
+def test_publish_removes_a_parquet_it_no_longer_writes(con, tmp_path):
+    stale = tmp_path / "genre_parents.parquet"
+    stale.write_bytes(b"not a parquet, and it must not survive anyway")
+    manifest = publish(con, tmp_path, DUMP, None)
+    assert not stale.exists()
+    assert "genre_parents" not in manifest["counts"]
+    assert (tmp_path / "bands.parquet").exists()
 
 
 def test_publish_removes_a_web_export_it_no_longer_writes(con, tmp_path):

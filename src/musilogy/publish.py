@@ -150,6 +150,13 @@ def publish(
         )
         counts[name] = _count(con, name)
 
+    # Same reason as the web exports below: a table dropped from a previous
+    # schema must not survive in the delivered directory, where a consumer
+    # globbing *.parquet would load a population that no longer exists.
+    for stale in out_dir.glob("*.parquet"):
+        if stale.stem not in TABLES:
+            stale.unlink()
+
     for table, columns in WEB_COLUMNS.items():
         payload = json.dumps(
             _columnar(con, table, columns), ensure_ascii=False, separators=(",", ":")
