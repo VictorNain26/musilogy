@@ -4,7 +4,7 @@
 -- here without creating a cycle.
 --
 -- Demo is accepted: among the groups owning both a demo and a studio album,
--- 67.6% released the demo first, a median of 3 years earlier — a demo is
+-- 67.5% released the demo first, a median of 3 years earlier — a demo is
 -- contemporaneous evidence of early activity.
 -- Live stays excluded on purpose: MusicBrainz dates a live release by its
 -- publication, not by the performance (710 bands carry a live release dated
