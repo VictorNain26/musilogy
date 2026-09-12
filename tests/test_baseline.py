@@ -172,6 +172,7 @@ def test_reference_dump_matches_the_baseline():
           WHERE list_contains(coalesce(secondary, []), 'Live')
             AND len(list_distinct(artists)) = 1
             AND yr(date) IS NOT NULL
+            AND yr(date) BETWEEN 1850 AND 2026
         ) l JOIN bands b ON b.mbid = l.band_mbid
         WHERE b.y_last_album IS NOT NULL AND l.y - b.y_last_album > 20
         """
