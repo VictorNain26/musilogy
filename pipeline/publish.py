@@ -17,22 +17,6 @@ WEB_COLUMNS = {
     "genres": ["genre_mbid", "name", "n_bands"],
 }
 REFERENCE_DIR = Path("pipeline/reference")
-R2_ANOMALY_QUERY = """
-    SELECT
-      sum(CASE WHEN begin IS NOT NULL AND yr(begin) IS NULL THEN 1 ELSE 0 END),
-      sum(CASE WHEN "end" IS NOT NULL AND yr("end") IS NULL THEN 1 ELSE 0 END),
-      sum(CASE WHEN yr(begin) IS NOT NULL
-                AND yr(begin) > getvariable('dump_year') THEN 1 ELSE 0 END),
-      sum(CASE WHEN yr("end") IS NOT NULL
-                AND yr("end") > getvariable('dump_year') THEN 1 ELSE 0 END),
-      sum(CASE WHEN yr(begin) IS NOT NULL AND yr("end") IS NOT NULL
-                AND yr("end") <= getvariable('dump_year')
-                AND yr("end") < yr(begin) THEN 1 ELSE 0 END)
-    FROM raw_artists
-"""
-R2_ANOMALY_KEYS = (
-    "begin_illegible", "end_illegible", "begin_future", "end_future", "end_before_begin",
-)
 
 
 def _git_sha() -> str:
@@ -50,8 +34,10 @@ def _columnar(con: duckdb.DuckDBPyConnection, table: str, columns: list[str]) ->
 
 
 def _r2_anomalies(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
-    row = con.execute(R2_ANOMALY_QUERY).fetchone()
-    return {key: int(value) for key, value in zip(R2_ANOMALY_KEYS, row)}
+    result = con.execute("SELECT * FROM r2_anomalies")
+    names = [c[0] for c in result.description]
+    row = result.fetchone()
+    return {name: int(value) for name, value in zip(names, row)}
 
 
 def publish(
@@ -66,8 +52,8 @@ def publish(
     counts = {}
     for name in TABLES:
         con.execute(
-            f"COPY {name} TO '{(out_dir / f'{name}.parquet').as_posix()}' "
-            "(FORMAT parquet, COMPRESSION zstd)"
+            f"COPY {name} TO ? (FORMAT parquet, COMPRESSION zstd)",
+            [(out_dir / f"{name}.parquet").as_posix()],
         )
         counts[name] = con.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
 

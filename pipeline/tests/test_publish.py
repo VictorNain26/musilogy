@@ -14,6 +14,15 @@ DUMP = "20260909-001002"
 REF_SUMS = Path("pipeline/reference") / f"{DUMP}.SHA256SUMS"
 
 
+def _synthetic_artist(mbid: str, begin: str | None, end: str | None) -> dict:
+    return {
+        "mbid": mbid, "name": mbid, "type": "Group",
+        "begin": begin, "end": end, "ended": False,
+        "country": None, "area": None, "begin_area": None,
+        "genres": [], "members": [],
+    }
+
+
 @pytest.fixture(scope="module")
 def con():
     c = duckdb.connect(":memory:")
@@ -79,3 +88,43 @@ def test_manifest_carries_corrections_checksum_when_present(con, tmp_path):
 def test_manifest_corrections_checksum_is_none_without_file(con, tmp_path):
     manifest = publish(con, tmp_path, DUMP, None)
     assert manifest["corrections_sha256"] is None
+
+
+def test_r2_anomaly_counters_are_not_mismapped_between_subrules(tmp_path):
+    # Comptes volontairement distincts par sous-règle : sur les fixtures
+    # partagées, les cinq compteurs valent tous 1 et un échange de clés
+    # (begin_future <-> end_future, par exemple) resterait invisible.
+    records = (
+        [_synthetic_artist(f"begin-illegible-{i}", "????-01-01", None) for i in range(2)]
+        + [_synthetic_artist(f"end-illegible-{i}", "2000-01-01", "????-06") for i in range(3)]
+        + [_synthetic_artist(f"begin-future-{i}", "2090-01-01", None) for i in range(4)]
+        + [_synthetic_artist(f"end-future-{i}", "2000-01-01", "2090-01-01") for i in range(5)]
+        + [_synthetic_artist(f"end-before-begin-{i}", "2010-01-01", "2005-01-01") for i in range(6)]
+    )
+    artists = tmp_path / "synthetic_artists.jsonl"
+    artists.write_text(
+        "\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8"
+    )
+    release_groups = tmp_path / "synthetic_release_groups.jsonl"
+    release_groups.write_text("", encoding="utf-8")
+
+    c = duckdb.connect(":memory:")
+    build(c, SQL, artists, release_groups, None)
+    out = tmp_path / "out"
+    manifest = publish(c, out, DUMP, None)
+
+    assert manifest["r2_anomalies"] == {
+        "begin_illegible": 2,
+        "end_illegible": 3,
+        "begin_future": 4,
+        "end_future": 5,
+        "end_before_begin": 6,
+    }
+
+
+def test_parquet_archives_are_zstd_compressed(con, tmp_path):
+    publish(con, tmp_path, DUMP, None)
+    codecs = con.execute(
+        f"SELECT DISTINCT compression FROM parquet_metadata('{(tmp_path / 'bands.parquet').as_posix()}')"
+    ).fetchall()
+    assert codecs == [("ZSTD",)]
