@@ -258,3 +258,60 @@ def test_parquet_archives_are_zstd_compressed(con, tmp_path):
         f"SELECT DISTINCT compression FROM parquet_metadata('{parquet_path}')"
     ).fetchall()
     assert codecs == [("ZSTD",)]
+
+
+def test_manifest_carries_the_parameters_the_build_actually_used(tmp_path):
+    # Two runs with different bounds produced indistinguishable manifests: a
+    # published dataset was not replayable from its own artifacts. Read back
+    # from the connection, never from the caller, so the manifest reports what
+    # the build used rather than what the caller meant to set.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(
+        tmp_path, artists, release_groups, min_candidate_albums=5, multi_artist_drop_limit=99.5
+    )
+    manifest = publish(c, tmp_path / "out", DUMP, None)
+    assert manifest["parameters"] == {
+        "dump_year": 2026,
+        "min_year": 1850,
+        "multi_artist_drop_limit": 99.5,
+        "min_candidate_albums": 5,
+    }
+
+
+def test_manifest_counts_the_rows_that_fed_the_build(con, tmp_path):
+    manifest = publish(con, tmp_path, DUMP, None)
+    loaded = manifest["inputs"]["rows_loaded"]
+    assert loaded["raw_artists"] == con.execute("SELECT count(*) FROM raw_artists").fetchone()[0]
+    assert (
+        loaded["raw_release_groups"]
+        == con.execute("SELECT count(*) FROM raw_release_groups").fetchone()[0]
+    )
+
+
+def test_manifest_replays_the_extraction_counts_beside_the_rows_loaded(con, tmp_path):
+    # The point of recording them: a truncated extraction — a full disk — makes
+    # the build silently smaller, and nothing else in the manifest would show
+    # it. Published side by side, kept-at-extraction against rows-loaded, the
+    # discrepancy is readable.
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "artists_kept": 7,
+                "artists_dropped": 3,
+                "release_groups_kept": 5,
+                "release_groups_dropped": 11,
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["inputs"]["extraction"]["artists_kept"] == 7
+    assert manifest["inputs"]["extraction"]["release_groups_dropped"] == 11
+
+
+def test_manifest_says_so_when_no_extraction_record_exists(con, tmp_path):
+    # The synthetic builds have no extraction step at all. Null is the honest
+    # answer; an absent key would let a reader assume nothing was dropped.
+    manifest = publish(con, tmp_path, DUMP, None)
+    assert manifest["inputs"]["extraction"] is None

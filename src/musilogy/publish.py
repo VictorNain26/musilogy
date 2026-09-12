@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 import subprocess
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -79,11 +80,34 @@ def _counters(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, int]:
     return {name: int(value) for name, value in zip(names, row, strict=True)}
 
 
+def _count(con: duckdb.DuckDBPyConnection, table: str) -> int:
+    row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
+    assert row is not None  # COUNT(*) always returns exactly one row
+    return int(row[0])
+
+
+PARAMETERS = ("dump_year", "min_year", "multi_artist_drop_limit", "min_candidate_albums")
+
+
+def _parameters(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    """Read back from the connection, never taken from the caller: the manifest
+    must say which bounds the build ran under, not the ones we meant to set."""
+    row = con.execute(
+        "SELECT " + ", ".join(f"getvariable('{name}')" for name in PARAMETERS)
+    ).fetchone()
+    assert row is not None  # a single-row projection always returns one row
+    # DuckDB reads a float session variable back as a Decimal; the manifest is
+    # JSON, which has no Decimal type, so it travels as a float instead.
+    values = (float(v) if isinstance(v, Decimal) else v for v in row)
+    return dict(zip(PARAMETERS, values, strict=True))
+
+
 def publish(
     con: duckdb.DuckDBPyConnection,
     out_dir: Path,
     dump: str,
     corrections: Path | None,
+    extraction: Path | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     web_dir = out_dir / "web"
@@ -96,9 +120,7 @@ def publish(
             f"COPY {name} TO ? (FORMAT parquet, COMPRESSION zstd)",
             [(out_dir / f"{name}.parquet").as_posix()],
         )
-        row = con.execute(f"SELECT count(*) FROM {name}").fetchone()
-        assert row is not None  # COUNT(*) always returns exactly one row
-        counts[name] = int(row[0])
+        counts[name] = _count(con, name)
 
     for table, columns in WEB_COLUMNS.items():
         payload = json.dumps(
@@ -136,6 +158,18 @@ def publish(
         "dump": dump,
         "archive_sha256": expected_sums(REFERENCE_DIR / f"{dump}.SHA256SUMS"),
         "counts": counts,
+        "parameters": _parameters(con),
+        "inputs": {
+            "rows_loaded": {
+                table: _count(con, table) for table in ("raw_artists", "raw_release_groups")
+            },
+            # Read back rather than recomputed: these counts were taken while
+            # the archive was being read, and comparing them to rows_loaded is
+            # the only way a truncated extraction shows up at all.
+            "extraction": json.loads(extraction.read_text(encoding="utf-8"))
+            if extraction is not None and extraction.exists()
+            else None,
+        },
         "r2_anomalies": _counters(con, "r2_anomalies"),
         "neutralised_inferences": _counters(con, "neutralised_inferences"),
         "density_exclusions": _counters(con, "density_exclusions"),

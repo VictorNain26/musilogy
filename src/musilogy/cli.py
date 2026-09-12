@@ -64,8 +64,20 @@ def fetch_and_extract() -> None:
     archive déjà vérifiée, extract réécrit sa sortie à chaque appel."""
     artist_archive = fetch_dump(DUMP, "artist.tar.xz", RAW_DIR, SUMS_PATH)
     rg_archive = fetch_dump(DUMP, "release-group.tar.xz", RAW_DIR, SUMS_PATH)
-    extract(artist_archive, reduce_artist, ARTISTS_JSONL)
-    extract(rg_archive, reduce_release_group, RELEASE_GROUPS_JSONL)
+    artists_kept, artists_dropped = extract(artist_archive, reduce_artist, ARTISTS_JSONL)
+    rgs_kept, rgs_dropped = extract(rg_archive, reduce_release_group, RELEASE_GROUPS_JSONL)
+    (WORK_DIR / "extraction.json").write_text(
+        json.dumps(
+            {
+                "artists_kept": artists_kept,
+                "artists_dropped": artists_dropped,
+                "release_groups_kept": rgs_kept,
+                "release_groups_dropped": rgs_dropped,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
 
 
 def run() -> None:
@@ -80,7 +92,7 @@ def run() -> None:
     if violations:
         raise SystemExit(f"invariants violated: {violations}")
 
-    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV)
+    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV, WORK_DIR / "extraction.json")
     print(manifest["counts"])
 
 

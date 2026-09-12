@@ -3,7 +3,7 @@ import logging
 import lzma
 import tarfile
 
-from musilogy.extract import iter_records, reduce_artist, reduce_release_group
+from musilogy.extract import extract, iter_records, reduce_artist, reduce_release_group
 
 GROUP = {
     "id": "a9424175-8b06-44ad-a1f4-319e92a50879",
@@ -96,3 +96,21 @@ def test_iter_records_surfaces_malformed_lines_instead_of_dropping_them_silently
 
     assert records == [{"id": "ok"}]
     assert any("1" in r.message for r in caplog.records)
+
+
+def test_extract_reports_what_it_dropped(tmp_path):
+    # A rule that removes data must leave a visible trace: the primary-type
+    # filter lives in the projection for size reasons — keeping every
+    # release-group would inflate the intermediate by roughly two thirds — so
+    # the count is the only way the manifest can show what it cost.
+    archive = tmp_path / "sample.tar.xz"
+    _write_mbdump_archive(
+        archive,
+        [
+            b'{"id": "a", "primary-type": "Album", "artist-credit": []}',
+            b'{"id": "b", "primary-type": "Single", "artist-credit": []}',
+            b'{"id": "c", "primary-type": "EP", "artist-credit": []}',
+        ],
+    )
+    kept, dropped = extract(archive, reduce_release_group, tmp_path / "out.jsonl")
+    assert (kept, dropped) == (1, 2)

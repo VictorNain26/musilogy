@@ -81,14 +81,19 @@ def iter_records(archive: Path) -> Iterator[dict[str, Any]]:
 
 def extract(
     archive: Path, reducer: Callable[[dict[str, Any]], dict[str, Any] | None], out: Path
-) -> int:
+) -> tuple[int, int]:
+    """Returns (kept, dropped). The second counts what the projection filter
+    removes: it is the only trace the manifest keeps of it, a dropped record
+    existing nowhere downstream."""
     out.parent.mkdir(parents=True, exist_ok=True)
     kept = 0
+    dropped = 0
     with out.open("w", encoding="utf-8") as fh:
         for rec in iter_records(archive):
             reduced = reducer(rec)
             if reduced is None:
+                dropped += 1
                 continue
             fh.write(json.dumps(reduced, ensure_ascii=False) + "\n")
             kept += 1
-    return kept
+    return kept, dropped
