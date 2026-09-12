@@ -6,6 +6,14 @@ dependencies = [
     "duckdb==1.5.5",
 ]
 
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "pipeline"
+module-root = ""
+
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
