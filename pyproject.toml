@@ -62,7 +62,7 @@ ignore_missing_imports = true
 module = [
     "conftest", "test_albums", "test_bands", "test_baseline",
     "test_corrections", "test_density", "test_env", "test_extract",
-    "test_fetch", "test_fixtures", "test_genre_parents", "test_genres",
+    "test_fetch", "test_fixtures", "test_genre_reliability", "test_genres",
     "test_invariants", "test_lifespan", "test_members", "test_presence",
     "test_publish",
 ]
