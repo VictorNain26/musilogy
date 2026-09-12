@@ -4,15 +4,15 @@ from pathlib import Path
 
 WITNESSES = [
     "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",  # The Beatles
-    "9d953ee6-4ea6-4b0e-aea6-7268d380bef1",  # homonyme
-    "8d3431db-bc83-4dc2-93b8-0e46e31d09f7",  # homonyme
+    "9d953ee6-4ea6-4b0e-aea6-7268d380bef1",  # homonym
+    "8d3431db-bc83-4dc2-93b8-0e46e31d09f7",  # homonym
     "9a58fda3-f4ed-4080-a3a5-f457aac9fcdd",  # Joy Division
     "f1106b17-dcbb-45f6-b938-199ccfab50cc",  # New Order
     "a3cb23fc-acd3-4ce0-8f36-1e5aa6a18432",  # U2
     "8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11",  # Portishead
     "97c86b2c-2765-46a2-aef8-76a7e24c430f",  # XTC
     "e598d30e-4ce1-402e-94a7-6f44779da6b7",  # Orange Juice
-    "6959c3d5-3e7f-41bb-aba3-50e38225d23d",  # homonyme
+    "6959c3d5-3e7f-41bb-aba3-50e38225d23d",  # homonym
     "a9424175-8b06-44ad-a1f4-319e92a50879",  # Disincarnate
     "125948ec-7f91-4d1a-8b83-accbf50fae3d",  # 3OH!3
     "d25be955-6fed-4303-bffb-8c440c191edb",  # Lethal Shöck
@@ -53,6 +53,6 @@ if __name__ == "__main__":
             if wanted & set(rec["artists"]):
                 fh.write(line)
 
-    print("témoins trouvés :", len(kept))
+    print("witnesses found:", len(kept))
     missing = wanted - set(kept)
-    print("manquants :", missing or "aucun")
+    print("missing:", missing or "none")
