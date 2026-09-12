@@ -131,32 +131,51 @@ CREATE OR REPLACE VIEW density_population_mismatch AS
       AND t.g.mbid = d.genre_mbid
       AND d.year BETWEEN b.y0 AND b.y_presence_end
   );
--- 60_density.sql excludes the genres the multi-artist rule makes unreliable;
--- none of them may keep a single density row. Recomputed from
--- raw_release_groups and bands, never from genres.n_candidate_albums /
--- genres.multi_artist_drop_pct: reading back the published measurement would
--- compare it to itself and stay silent if the measurement itself were wrong.
--- 50 and 200 hardcoded, like [1850, 2026] above and for the same reason —
--- this view re-asserts the contractual rule instead of reading back the
--- session variables the production rule depends on.
-CREATE OR REPLACE VIEW density_excluded_genre_present AS
+-- The multi-artist unreliability, recomputed from raw_release_groups and
+-- bands, never from genres.n_candidate_albums / genres.multi_artist_drop_pct:
+-- reading back the published measurement would compare it to itself and stay
+-- silent if the measurement itself were wrong. 50 and 200 hardcoded, like
+-- [1850, 2026] above and for the same reason — these views re-assert the
+-- contractual rule instead of reading back the session variables the
+-- production rules depend on. Not an invariant: it legitimately returns rows,
+-- and density_excluded_genre_present / density_missing_cell both read it.
+CREATE OR REPLACE VIEW genre_unreliable_recomputed AS
   WITH credits AS (
     SELECT unnest(list_distinct(artists)) AS artist_mbid,
            len(list_distinct(artists)) > 1 AS multi
     FROM raw_release_groups
     WHERE yr(date) BETWEEN 1850 AND 2026
       AND len(list_filter(coalesce(secondary, []), s -> s NOT IN ('Soundtrack', 'Demo'))) = 0
-  ),
-  unreliable AS (
-    SELECT t.g.mbid AS genre_mbid
-    FROM credits c JOIN bands b ON b.mbid = c.artist_mbid,
-         UNNEST(b.genres) AS t(g)
-    GROUP BY t.g.mbid
-    HAVING count(*) >= 200
-       AND round(100.0 * sum(c.multi::INTEGER) / count(*), 1) >= 50
   )
+  SELECT t.g.mbid AS genre_mbid
+  FROM credits c JOIN bands b ON b.mbid = c.artist_mbid,
+       UNNEST(b.genres) AS t(g)
+  GROUP BY t.g.mbid
+  HAVING count(*) >= 200
+     AND round(100.0 * sum(c.multi::INTEGER) / count(*), 1) >= 50;
+-- 60_density.sql excludes the genres the multi-artist rule makes unreliable;
+-- none of them may keep a single density row.
+CREATE OR REPLACE VIEW density_excluded_genre_present AS
   SELECT DISTINCT d.genre_mbid FROM density d
-  WHERE EXISTS (SELECT 1 FROM unreliable u WHERE u.genre_mbid = d.genre_mbid);
+  WHERE EXISTS (SELECT 1 FROM genre_unreliable_recomputed u WHERE u.genre_mbid = d.genre_mbid);
+-- The twin density_population_mismatch does not have: that view iterates over
+-- the rows that exist and says nothing about the ones that vanished. This one
+-- enumerates the cells the population implies and reports those density does
+-- not carry. Same [1850, 2026] literals, same reason.
+CREATE OR REPLACE VIEW density_missing_cell AS
+  SELECT DISTINCT t.g.mbid AS genre_mbid, y.year
+  FROM bands b,
+       UNNEST(b.genres) AS t(g),
+       range(1850, 2027) AS y(year)
+  WHERE b.type = 'Group'
+    AND b.y0 IS NOT NULL
+    AND y.year BETWEEN b.y0 AND b.y_presence_end
+    AND NOT EXISTS (
+      SELECT 1 FROM genre_unreliable_recomputed u WHERE u.genre_mbid = t.g.mbid
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM density d WHERE d.genre_mbid = t.g.mbid AND d.year = y.year
+    );
 -- 80_members.sql. The band side is a local reference and must resolve; the
 -- person side is deliberately not checked, it points outside this pipeline.
 -- NOT EXISTS, not NOT IN: see album_without_band above, same NULL trap.
@@ -188,3 +207,11 @@ CREATE OR REPLACE VIEW corrections_invalid AS
   SELECT c.mbid, c.field FROM corrections c
   WHERE c.field NOT IN ('begin', 'end')
      OR NOT EXISTS (SELECT 1 FROM raw_artists r WHERE r.mbid = c.mbid);
+-- extract.py projects {Group, Orchestra, Choir} and nothing else; 60_density.sql
+-- narrows further to Group. Neither is stated in SQL, so a change to KEPT_TYPES
+-- moved the population and the projection at once, in silence. Hardcoded here
+-- like every other contractual bound: widening the population must be a
+-- deliberate edit of this literal.
+CREATE OR REPLACE VIEW band_unexpected_type AS
+  SELECT mbid FROM bands
+  WHERE type IS NULL OR type NOT IN ('Group', 'Orchestra', 'Choir');

@@ -84,6 +84,7 @@ def build(
 
 INVARIANTS = (
     "duplicate_band",
+    "band_unexpected_type",
     "band_out_of_window",
     "end_before_begin",
     "end_after_dump_year",
@@ -103,6 +104,7 @@ INVARIANTS = (
     "density_out_of_range",
     "density_above_band_count",
     "density_population_mismatch",
+    "density_missing_cell",
     "density_excluded_genre_present",
     "member_without_band",
     "member_without_person",

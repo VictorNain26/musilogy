@@ -541,6 +541,63 @@ def test_corrections_invalid_is_reported(con):
     assert violations.get("corrections_invalid") == 3
 
 
+def test_density_missing_cell_is_reported(con):
+    # density_population_mismatch iterates over the rows that exist, so a
+    # deleted cell is simply never examined. A production change that drops
+    # cells — a join that loses rows, a filter applied one file too early —
+    # was caught by nothing but the baseline, and only on the reference dump.
+    genre_mbid, year, present = con.execute(
+        "SELECT genre_mbid, year, present FROM density LIMIT 1"
+    ).fetchone()
+    with restored(con, ("INSERT INTO density VALUES (?, ?, ?)", [genre_mbid, year, present])):
+        con.execute("DELETE FROM density WHERE genre_mbid = ? AND year = ?", [genre_mbid, year])
+        violations = dict(check_invariants(con, SQL))
+    assert violations.get("density_missing_cell") == 1
+
+
+def test_density_missing_cell_does_not_demand_the_cells_the_exclusion_withholds(tmp_path):
+    # The symmetric trap: an invariant that enumerated expected cells without
+    # recomputing the exclusion would demand a row for every excluded genre and
+    # fire on a correct build. g-excluded legitimately owns no cell at all.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(tmp_path, artists, release_groups)
+    assert check_invariants(c, SQL) == []
+    assert c.execute("SELECT count(*) FROM density WHERE genre_mbid = 'g-excluded'").fetchone() == (
+        0,
+    )
+
+
+def test_density_missing_cell_does_not_read_back_the_published_measurement(tmp_path):
+    # Same rationale as density_excluded_genre_present: wiping the published
+    # rate leaves the raw evidence untouched. An implementation that read
+    # genres.multi_artist_drop_pct would start demanding g-excluded's cells.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(tmp_path, artists, release_groups)
+    c.execute("UPDATE genres SET multi_artist_drop_pct = 0, n_candidate_albums = 0")
+    assert check_invariants(c, SQL) == []
+
+
+def test_band_unexpected_type_is_reported(con):
+    # extract.py keeps {Group, Orchestra, Choir} and nothing states that
+    # contract in SQL, while 60_density.sql depends on type = 'Group'. A change
+    # to KEPT_TYPES moved both the population and the projection in silence.
+    mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    original = con.execute("SELECT type FROM bands WHERE mbid = ?", [mbid]).fetchone()[0]
+    with restored(con, ("UPDATE bands SET type = ? WHERE mbid = ?", [original, mbid])):
+        con.execute("UPDATE bands SET type = 'Person' WHERE mbid = ?", [mbid])
+        violations = dict(check_invariants(con, SQL))
+    assert violations.get("band_unexpected_type") == 1
+
+
+def test_band_unexpected_type_catches_a_null_type(con):
+    mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    original = con.execute("SELECT type FROM bands WHERE mbid = ?", [mbid]).fetchone()[0]
+    with restored(con, ("UPDATE bands SET type = ? WHERE mbid = ?", [original, mbid])):
+        con.execute("UPDATE bands SET type = NULL WHERE mbid = ?", [mbid])
+        violations = dict(check_invariants(con, SQL))
+    assert violations.get("band_unexpected_type") == 1
+
+
 def test_corrections_invalid_survives_a_null_mbid_in_raw_artists(con):
     # Same NULL trap as album_without_band and unknown_genre: a NULL mbid
     # in the `raw_artists` subquery used to make NOT IN never true.
