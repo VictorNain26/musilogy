@@ -16,10 +16,10 @@ FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 
 
 def work_dir(dump: str) -> Path:
-    """Une extraction porte le dump dont elle provient. Sans ce niveau, un
-    `musilogy run` lancé après un bump de REFERENCE_DUMP reconstruit sur
-    l'extraction précédente et publie un manifeste qui nomme le nouveau dump
-    et ses empreintes — la sortie affirme alors une source qu'elle n'a pas lue."""
+    """An extraction carries the dump it came from. Without this level, a
+    `musilogy run` launched after a REFERENCE_DUMP bump rebuilds on the previous
+    extraction and publishes a manifest naming the new dump and its checksums —
+    the output then asserts a source it never read."""
     return DATA_DIR / "work" / dump
 
 
