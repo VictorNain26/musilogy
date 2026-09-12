@@ -18,3 +18,18 @@ def test_beatles_genres_carry_mbid_and_votes():
             assert all(g["mbid"] and "votes" in g for g in rec["genres"])
             return
     raise AssertionError("The Beatles absent des fixtures")
+
+
+def test_release_groups_file_is_well_formed_and_complete():
+    lines = open(FIX / "release_groups.jsonl", encoding="utf-8").readlines()
+    records = [json.loads(line) for line in lines]
+    # Nombre figé au moment de l'extraction : toute troncature ou ligne perdue le change.
+    assert len(records) == 3592
+
+
+def test_every_release_group_credits_a_witness():
+    from scripts.make_fixtures import WITNESSES  # noqa: PLC0415
+    wanted = set(WITNESSES)
+    for line in open(FIX / "release_groups.jsonl", encoding="utf-8"):
+        rec = json.loads(line)
+        assert wanted & set(rec["artists"]), rec["mbid"]
