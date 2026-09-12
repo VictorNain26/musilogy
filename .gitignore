@@ -1,6 +1,7 @@
 data/
 *.parquet
 *.jsonl
+!pipeline/tests/fixtures/*.jsonl
 *.tar.xz
 node_modules/
 __pycache__/
