@@ -22,7 +22,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["slow: exécution complète sur le dump de référence"]
+markers = ["slow: full run on the reference dump"]
 addopts = "-m 'not slow'"
 
 [tool.ruff]

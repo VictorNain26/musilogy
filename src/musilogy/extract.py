@@ -76,7 +76,7 @@ def iter_records(archive: Path) -> Iterator[dict[str, Any]]:
                     skipped += 1
                     continue
     if skipped:
-        logger.warning("%s : %d ligne(s) JSON malformée(s) ignorée(s)", archive, skipped)
+        logger.warning("%s: %d malformed JSON line(s) ignored", archive, skipped)
 
 
 def extract(
