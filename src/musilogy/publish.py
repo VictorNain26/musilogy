@@ -69,7 +69,7 @@ def _git_sha() -> str:
             check=True,
             cwd=PACKAGE_DIR,
         ).stdout.strip()
-    except Exception:
+    except (subprocess.CalledProcessError, OSError):
         return "unknown"
 
 
