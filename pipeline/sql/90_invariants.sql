@@ -76,10 +76,13 @@ CREATE OR REPLACE VIEW density_above_band_count AS
   SELECT d.genre_mbid FROM density d LEFT JOIN genres g USING (genre_mbid)
   WHERE g.genre_mbid IS NULL OR d.present > g.n_bands;
 -- §9.2. genre_parents references existing genres at both ends.
+-- NOT EXISTS, not NOT IN: see album_without_band above, same NULL trap.
 CREATE OR REPLACE VIEW genre_parent_unknown_genre AS
-  SELECT genre_mbid FROM genre_parents WHERE genre_mbid NOT IN (SELECT genre_mbid FROM genres)
+  SELECT genre_mbid FROM genre_parents gp
+  WHERE NOT EXISTS (SELECT 1 FROM genres g WHERE g.genre_mbid = gp.genre_mbid)
   UNION
-  SELECT parent_mbid FROM genre_parents WHERE parent_mbid NOT IN (SELECT genre_mbid FROM genres);
+  SELECT parent_mbid FROM genre_parents gp
+  WHERE NOT EXISTS (SELECT 1 FROM genres g WHERE g.genre_mbid = gp.parent_mbid);
 -- §9.2. genre_parents has no cycle. The path walked by the recursive CTE
 -- never revisits an already-visited node: its length is bounded by the
 -- number of genres, so the query terminates whether the graph is cyclic or not.
