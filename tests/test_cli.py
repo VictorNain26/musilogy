@@ -1,36 +1,75 @@
+import json
+
 import pytest
+from conftest import FIX
 
-from musilogy.cli import _stop_on_extraction_mismatch
-
-
-def manifest(match):
-    return {
-        "inputs": {
-            "rows_loaded": {"raw_artists": 682447, "raw_release_groups": 2317879},
-            "extraction": {"artists_kept": 682447, "release_groups_kept": 2317879},
-            "extraction_matches_rows_loaded": match,
-        }
-    }
+from musilogy import cli
 
 
-def test_a_mismatch_stops_the_run():
-    # publish() measured the discrepancy and published it, but nothing acted on
-    # it: a truncated extraction — a full disk mid-write — makes the build
-    # silently smaller and the run publishes a dataset that presents itself as
-    # complete. Removing the guard, or moving the comparison out of the run
-    # path, makes this test fail.
+def sidecar(tmp_path, artists_kept, release_groups_kept):
+    path = tmp_path / "extraction.json"
+    path.write_text(
+        json.dumps(
+            {
+                "artists_kept": artists_kept,
+                "artists_dropped": 0,
+                "release_groups_kept": release_groups_kept,
+                "release_groups_dropped": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def rows_loaded(con):
+    # Read from the connection rather than hardcoded: the fixtures' counts are
+    # already frozen in tests/test_fixtures.py, and a second copy here would
+    # be a second point of authority that nothing protects.
+    return (
+        con.execute("SELECT count(*) FROM raw_artists").fetchone()[0],
+        con.execute("SELECT count(*) FROM raw_release_groups").fetchone()[0],
+    )
+
+
+def test_a_sidecar_that_disagrees_stops_the_run(con, tmp_path):
+    # The failure this exists for: a sidecar left by a wider extraction, which
+    # the next run reuses because both JSONL files merely exist. Removing the
+    # comparison, or inverting it, makes this test fail.
     with pytest.raises(SystemExit) as raised:
-        _stop_on_extraction_mismatch(manifest(False))
+        cli._stop_on_extraction_mismatch(con, sidecar(tmp_path, 1, 1))
     assert "extraction mismatch" in str(raised.value)
 
 
-def test_no_extraction_record_is_not_a_mismatch():
-    # None means the sidecar is absent, unreadable, or missing a count: it says
-    # nothing about the extraction. A truthiness test instead of `is False`
-    # would read that silence as a failure and stop every run built on a
-    # pre-sidecar extraction — the reference dump's own case today.
-    _stop_on_extraction_mismatch(manifest(None))
+def test_no_sidecar_is_not_a_mismatch(con, tmp_path):
+    # None means absent, unreadable, or missing a count: silence, not
+    # agreement. A truthiness test instead of `is False` would read that
+    # silence as a failure and stop every run built on a pre-sidecar
+    # extraction — the reference dump's own case today.
+    cli._stop_on_extraction_mismatch(con, tmp_path / "absent.json")
 
 
-def test_counts_that_agree_let_the_run_through():
-    _stop_on_extraction_mismatch(manifest(True))
+def test_a_sidecar_that_agrees_lets_the_run_through(con, tmp_path):
+    artists, release_groups = rows_loaded(con)
+    cli._stop_on_extraction_mismatch(con, sidecar(tmp_path, artists, release_groups))
+
+
+def test_run_refuses_to_publish_when_the_extraction_disagrees(tmp_path, monkeypatch):
+    # The wiring, not the decision: dropping the call from run(), or moving it
+    # back after publish(), leaves the three tests above green. What has to
+    # hold is that nothing is written — a mismatching run must not replace a
+    # sound delivery in data/out/ with a truncated one. build() and
+    # check_invariants() run for real on the fixtures; only publish() is
+    # replaced, and the assertion is that it never ran.
+    published = []
+    monkeypatch.setattr(cli, "ARTISTS_JSONL", FIX / "artists.jsonl")
+    monkeypatch.setattr(cli, "RELEASE_GROUPS_JSONL", FIX / "release_groups.jsonl")
+    monkeypatch.setattr(cli, "WORK_DIR", tmp_path)
+    monkeypatch.setattr(cli, "publish", lambda *args: published.append(args))
+    sidecar(tmp_path, 1, 1)
+
+    with pytest.raises(SystemExit) as raised:
+        cli.run()
+
+    assert "extraction mismatch" in str(raised.value)
+    assert published == [], "publish() ran before the guard could stop the run"

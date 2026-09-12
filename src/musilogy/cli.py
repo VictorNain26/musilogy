@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any
+from pathlib import Path
 
 import duckdb
 
@@ -21,7 +21,7 @@ from musilogy.paths import (
     out_dir,
     work_dir,
 )
-from musilogy.publish import publish
+from musilogy.publish import extraction_matches_rows_loaded, publish
 
 SUMS_PATH = REFERENCE_DIR / f"{DUMP}.SHA256SUMS"
 WORK_DIR = work_dir(DUMP)
@@ -82,14 +82,21 @@ def fetch_and_extract() -> None:
     )
 
 
-def _stop_on_extraction_mismatch(manifest: dict[str, Any]) -> None:
-    """`is False`, never a truthiness test: None says the sidecar is absent,
+def _stop_on_extraction_mismatch(con: duckdb.DuckDBPyConnection, extraction: Path) -> None:
+    """Called before publish(), never after: a run that wrote its Parquet and
+    only then failed would have replaced a sound delivery with a truncated
+    one, and a consumer reading the tables without the manifest could not tell.
+    Nothing is written here, so the previous publication survives a refusal.
+
+    `is False`, never a truthiness test: None says the sidecar is absent,
     unreadable or missing a count, which is silence and not agreement — every
     extraction predating the sidecar reports exactly that. False says the build
     loaded something other than what the extraction wrote, so the tables are
     narrower than their source and nothing downstream can tell."""
-    if manifest["inputs"]["extraction_matches_rows_loaded"] is False:
-        raise SystemExit(f"extraction mismatch: {manifest['inputs']}")
+    if extraction_matches_rows_loaded(con, extraction) is False:
+        raise SystemExit(
+            f"extraction mismatch: {extraction} disagrees with the rows loaded, nothing published"
+        )
 
 
 def run() -> None:
@@ -104,8 +111,10 @@ def run() -> None:
     if violations:
         raise SystemExit(f"invariants violated: {violations}")
 
-    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV, WORK_DIR / "extraction.json")
-    _stop_on_extraction_mismatch(manifest)
+    extraction = WORK_DIR / "extraction.json"
+    _stop_on_extraction_mismatch(con, extraction)
+
+    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV, extraction)
     print(manifest["counts"])
 
 
