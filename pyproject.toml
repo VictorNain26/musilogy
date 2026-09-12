@@ -1,0 +1,17 @@
+[project]
+name = "musilogy"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb==1.5.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["pipeline/tests"]
+markers = ["slow: exécution complète sur le dump de référence"]
+addopts = "-m 'not slow'"

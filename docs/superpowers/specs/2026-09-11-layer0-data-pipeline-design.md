@@ -152,6 +152,8 @@ Un release-group est retenu comme album d'un groupe si et seulement si :
 4. ses types secondaires sont **vides ou exactement `{Soundtrack}`** ;
 5. son année est dans `[y0 − 5, borne_haute + 5]`, où `borne_haute = y_end_declared` si elle existe, sinon l'année du dump.
 
+La condition 1 est appliquée à l'extraction (`pipeline/extract.py::reduce_release_group`), pas dans le SQL de cette règle : le champ `primary-type` n'est même pas transporté jusqu'à `raw_release_groups`, par choix de volume assumé pour ne pas conserver en mémoire ou sur disque des dizaines de millions de release-groups non-Album. Conséquence à connaître : si ce filtre d'extraction s'assouplissait un jour, aucune couche en aval ne rattraperait les non-albums qui s'y glisseraient.
+
 Effets mesurés :
 
 - 2 317 879 albums dans la base, dont 94,7 % datés.
@@ -344,6 +346,9 @@ Des enregistrements **réels**, extraits du dump de référence pour les témoin
 | ROD | `3cb86073-22d7-43d5-8f22-422b1e54988e` | R4, R7 : aucun album, présent en `y0` seulement | formé 1996 |
 | Flesh Field | `212faddb-cd09-4fbc-9336-3ed7cadfba68` | R3 : terminé sans date, bruit tardif retenu | formé 1996, albums jusqu'en 2026 |
 | Demented Are Go! | `8a1f012c-acc1-4dda-878f-43ac02f2366f` | R3.2 : même artiste crédité deux fois, retenu | *The Day the Earth Spat Blood*, 1989 |
+| The Belle Stars | `62f7a211-0056-45fe-934a-37a388a7356f` | R1.4 : sans genre → exclu | Group, formé 1980, aucun genre |
+| Handel and Haydn Society | `35ddcb29-4c16-4af6-b6f8-32143ee24a6c` | R1.3 : formation avant 1850 → exclu | Group, formé 1815, un genre |
+| Thunder Jolt | `d36b0fad-abd7-44e4-88fa-f638bbf8c9a6` | R2.3 : fin postérieure à l'année du dump → absente | fin `2027-01-05` |
 
 ### 9.2 Invariants
 
