@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 import duckdb
 
@@ -12,12 +11,19 @@ from musilogy import REFERENCE_DUMP as DUMP
 from musilogy.build import build, check_invariants
 from musilogy.extract import extract, reduce_artist, reduce_release_group
 from musilogy.fetch import fetch_dump
-from musilogy.paths import CORRECTIONS_CSV, REFERENCE_DIR, SQL_DIR
+from musilogy.paths import (
+    CORRECTIONS_CSV,
+    FIXTURES_DIR,
+    RAW_DIR,
+    REFERENCE_DIR,
+    SQL_DIR,
+    out_dir,
+    work_dir,
+)
 from musilogy.publish import publish
 
-RAW_DIR = Path("data/raw")
-WORK_DIR = Path("data/work")
 SUMS_PATH = REFERENCE_DIR / f"{DUMP}.SHA256SUMS"
+WORK_DIR = work_dir(DUMP)
 ARTISTS_JSONL = WORK_DIR / "artists.jsonl"
 RELEASE_GROUPS_JSONL = WORK_DIR / "release_groups.jsonl"
 
@@ -74,14 +80,14 @@ def run() -> None:
     if violations:
         raise SystemExit(f"invariants violated: {violations}")
 
-    manifest = publish(con, Path("data/out") / DUMP, DUMP, CORRECTIONS_CSV)
+    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV)
     print(manifest["counts"])
 
 
 def make_fixtures() -> None:
     """Extrait les enregistrements témoins des extractions complètes."""
-    work = Path("data/work")
-    out = Path("tests/fixtures")
+    work = WORK_DIR
+    out = FIXTURES_DIR
     out.mkdir(parents=True, exist_ok=True)
     wanted = set(WITNESSES)
 

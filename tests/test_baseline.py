@@ -1,10 +1,9 @@
-from pathlib import Path
-
 import duckdb
 import pytest
 
+from musilogy import REFERENCE_DUMP
 from musilogy.build import build, check_invariants
-from musilogy.paths import SQL_DIR
+from musilogy.paths import SQL_DIR, work_dir
 
 # members: 646 620 relations extracted, of which 44 795 are byte-identical
 # rows (the dump emits one relation per set of attributes) and 66 more collapse
@@ -55,7 +54,14 @@ NEUTRALISED_INFERENCES = {
     "last_album_before_declared_begin": 271,
     "first_album_with_begin_below_min_year": 73,
 }
-WORK = Path("data/work")
+WORK = work_dir(REFERENCE_DUMP)
+
+
+def test_the_baseline_looks_for_the_extractions_at_an_absolute_path():
+    # Relative to the cwd, this suite skipped silently outside the repo root:
+    # a green run that checked nothing. The skip must mean "no extraction on
+    # disk", never "wrong directory".
+    assert WORK.is_absolute()
 
 
 def single_row(con, table):
