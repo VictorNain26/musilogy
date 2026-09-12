@@ -26,7 +26,7 @@ Colonnes réelles (voir `src/musilogy/sql/`) :
 
 - **`bands`** : `mbid`, `name`, `type`, `y0_declared`, `y_end_declared`, `ended`, `country`, `begin_area`, `genres` (liste de `{mbid, name, votes}`, triée), `y_first_album`, `y_last_album`, `y0`, `y0_source`, `y_end`, `y_end_source`, `y_presence_end`.
 - **`albums`** : `band_mbid`, `rg_mbid`, `title`, `y`, `soundtrack`.
-- **`genres`** : `genre_mbid`, `name`, `n_bands`, `n_candidate_albums`, `multi_artist_drop_pct`.
+- **`genres`** : `genre_mbid`, `name`, `n_bands`, `density_eligible`, `n_candidate_credits`, `multi_artist_drop_pct`.
 - **`members`** : `band_mbid`, `person_mbid`, `y_begin`, `y_end`.
 - **`density`** : `genre_mbid`, `year`, `present`.
 
@@ -40,7 +40,7 @@ Chaque règle vit dans son fichier SQL numéroté (`src/musilogy/sql/`) ; **la n
 
 - **`20_albums` — Albums.** Un release-group compte comme album s'il est de type primaire `Album` (filtré dès l'extraction), crédité à un **seul artiste distinct** présent dans `bands`, daté dans `[1850, année du dump]`, et dont les types secondaires sont vides ou inclus dans `{Soundtrack, Demo}`.
 
-  Les démos sont acceptées parce qu'elles sont une preuve *contemporaine* d'activité précoce : 67,5 % des groupes ayant démo et album studio ont sorti la démo d'abord, 3 ans plus tôt en médiane. Les albums live sont exclus pour la raison inverse : **MusicBrainz les date de leur publication, pas du concert** — 727 groupes ont un live daté plus de 20 ans après leur dernier studio, avec des titres qui portent eux-mêmes la vraie date (« Live in Paris (1966) », publié en 2024). Compilations, DJ-mix et remix sont exclus au même titre.
+  Les démos sont acceptées parce qu'elles sont une preuve *contemporaine* d'activité précoce : 67,6 % des groupes ayant démo et album studio ont sorti la démo d'abord, 3 ans plus tôt en médiane parmi eux. Les albums live sont exclus pour la raison inverse : **MusicBrainz les date de leur publication, pas du concert** — 710 groupes ont un live daté plus de 20 ans après leur dernier studio, avec des titres qui portent eux-mêmes la vraie date (« Live in Paris (1966) », publié en 2024). Compilations, DJ-mix et remix sont exclus au même titre.
 
 - **`30_bands_lifespan` — Ligne de vie et provenance.** Aux deux bords, **la preuve déclarée l'emporte, l'album prend le relais** : `y0` vaut l'année déclarée, sinon celle du premier album ; `y_end` la fin déclarée, sinon celle du dernier album. `y0_source` et `y_end_source` nomment la branche qui a produit la valeur. Les preuves brutes restent publiées à côté.
 
@@ -56,15 +56,15 @@ Chaque règle vit dans son fichier SQL numéroté (`src/musilogy/sql/`) ; **la n
 
 - **`50_genres` — Vocabulaire.** Les genres effectivement portés par `bands`.
 
-- **`55_genre_reliability` — Fiabilité mesurée.** Pour chaque genre, combien de sorties ses groupes auraient pu porter (`n_candidate_albums`) et quelle part la règle du crédit unique en écarte (`multi_artist_drop_pct`). Un genre sans aucun candidat garde NULL, pas 0.
+- **`55_genre_reliability` — Fiabilité mesurée.** Pour chaque genre, combien de lignes de crédit ses groupes auraient pu porter (`n_candidate_credits`) — une sortie créditée à deux artistes qui portent tous deux le genre compte deux fois, ce qui distingue les 27 199 crédits mesurés pour `classical` de ses 25 465 release-groups distincts — et quelle part la règle du crédit unique en écarte (`multi_artist_drop_pct`). Un genre sans aucun candidat garde NULL, pas 0.
 
-- **`60_density` — Densité.** Délibérément plus étroite que la population : type `Group`, `y0` connu, au moins un genre, **et un genre dont la mesure de fiabilité tient**. Un groupe compte dans chacun de ses genres ; les totaux par genre ne s'additionnent pas.
+- **`60_density` — Densité.** Délibérément plus étroite que la population : type `Group`, `y0` connu, au moins un genre, **et un genre `density_eligible`** — la règle est matérialisée dans `55_genre_reliability`, ce fichier ne fait que l'appliquer. Un groupe compte dans chacun de ses genres ; les totaux par genre ne s'additionnent pas.
 
 - **`80_members` — Membres.** Les relations `member of band`, dédoublonnées, avec leurs années lues par la même macro stricte que partout ailleurs.
 
 - **`90_invariants` — Contrôles.** 26 vues qui doivent toutes renvoyer zéro ligne ; le nom de la vue *est* le nom de l'invariant. Chacune **recalcule indépendamment** ce qu'elle vérifie : une revue a montré qu'un invariant réutilisant la formule de production restait muet sur 265 violations réelles. Les bornes contractuelles y sont codées en dur, aux deux extrémités, sans relire les variables de session de la production ; changer de dump impose donc une modification délibérée de ce fichier — c'est l'intention.
 
-Quatre bornes sont des variables de session posées par `build()` : `dump_year`, `min_year`, `multi_artist_drop_limit` et `min_candidate_albums`.
+Quatre bornes sont des variables de session posées par `build()` : `dump_year`, `min_year`, `multi_artist_drop_limit` et `min_candidate_credits`.
 
 Les corrections manuelles (`src/musilogy/corrections.csv`, colonnes `mbid, field, value, justification, source`) sont appliquées avant la lecture des dates ; chaque ligne cite une source vérifiable, et un garde-fou échoue au-delà de 50 lignes.
 
@@ -76,7 +76,7 @@ Coder une liste de genres « classiques » serait un jugement arbitraire à main
 
 La règle est donc mesurée, pas nommée : `density` écarte les genres dont **la moitié au moins des albums candidats sont perdus, sur un échantillon d'au moins 200**. Le minimum d'échantillon porte du sens : au seuil seul, 35 genres sortiraient, dont `soukous`, `congolese rumba`, `lovers rock`, `punta` et `huayno` — de la musique populaire dont le taux élevé n'est que du bruit d'échantillon.
 
-Résultat : **13 genres écartés, 1 554 paires groupe-genre sur 214 948.** Sur les 102 098 groupes porteurs d'un genre, 101 291 sont intacts, 211 gardent leur place grâce à un autre genre, et **596 sortent de la frise** — dont 343 `string quartet` et 304 `classical`. Aucun artiste et aucun album n'est supprimé : `classical` reste dans `genres` avec ses 846 groupes dans `bands` et leurs albums dans `albums`.
+Résultat : **13 genres écartés, 1 554 paires groupe-genre sur 214 948.** Sur les 102 098 groupes porteurs d'un genre, 101 291 sont intacts, 211 gardent leur place grâce à un autre genre, et **596 perdent tout genre publiable** — dont 343 `string quartet` et 304 `classical`. 136 de ces 596 n'avaient de toute façon aucun `y0` et n'étaient pas plaçables sur la frise : la perte réelle pour `density` est de **460**. Aucun artiste et aucun album n'est supprimé : `classical` reste dans `genres` avec ses 846 groupes dans `bands` et leurs albums dans `albums`.
 
 Le coût mesuré de la règle est un faux positif, `mincecore` (73,1 % sur 216 candidats), un micro-genre de grindcore : sur ses 16 groupes, un seul sort de la frise, et il n'a aucun album. Aucune exception n'est codée pour lui — une liste d'exceptions serait l'arbitrage qu'on évite.
 
@@ -86,24 +86,24 @@ Le coût mesuré de la règle est un faux positif, `mincecore` (73,1 % sur 216 c
 
 - `web/bands_timeline.json.gz` — les artistes dont `y0` est connu, donc plaçables sur une frise (15,6 Mo) ;
 - `web/bands_rest.json.gz` — les autres, chargeables à la demande (9,4 Mo) ;
-- `web/genres.json.gz` — le vocabulaire, avec `n_candidate_albums` et `multi_artist_drop_pct` ;
+- `web/genres.json.gz` — le vocabulaire, avec `density_eligible`, `n_candidate_credits` et `multi_artist_drop_pct` ;
 - `web/density.json.gz` — l'agrégat par genre et par année.
 
-`density` est publié plutôt que laissé à recalculer, et les deux colonnes de fiabilité voyagent avec le vocabulaire, pour une raison mesurée : sans elles, un consommateur qui reconstruit la densité depuis les seuls artefacts web obtient 53 029 cellules au lieu de 52 201 — il réinvente les 828 cellules des douze genres savants que la couche 0 refuse délibérément de publier. Réimplémenter une règle, c'est là qu'elle se perd.
+`density` est publié plutôt que laissé à recalculer, et `density_eligible` voyage désormais avec le vocabulaire comme une colonne à part entière — la règle elle-même, pas seulement les deux mesures qui la motivent, elles aussi publiées à côté pour qui veut l'auditer plutôt que la croire sur parole. Un consommateur n'a donc plus de seuil à coder en dur : sans cette colonne, reconstruire la densité depuis les seuls artefacts web donne 53 029 cellules au lieu de 52 201 — les 828 cellules des douze genres savants que la couche 0 refuse délibérément de publier. Réimplémenter une règle, c'est là qu'elle se perd.
 
 Chaque ligne porte son `mbid` — la clé de jointure vers `density`, `members` et MusicBrainz — ses `genres`, et les deux bords avec leurs preuves brutes des deux côtés.
 
-**Attention à `y_presence_end` quand la fin est inconnue.** La colonne vaut alors `y0` : le groupe se réduit à une barre d'un an. Cela concerne **22 496 groupes sur les 84 722 éligibles à la densité, soit 26,6 %** — dont 9 788 qui ne sont pas terminés et n'ont aucune preuve de fin. Un groupe formé en 2026 est donc un point, pas une barre ouverte. Pour rendre cela honnêtement, la couche 1 doit lire `ended` et `y_end_source` plutôt que `y_presence_end` seul : c'est le rendu faux le plus probable d'une première intégration.
+**Attention à `y_presence_end` quand la fin est inconnue.** La colonne vaut alors `y0` : le groupe se réduit à une barre d'un an. Cela concerne **22 496 groupes sur les 84 722 de type `Group` datés et porteurs d'un genre, soit 26,6 % — dont 84 262 alimentent effectivement une cellule** — dont 9 788 qui ne sont pas terminés et n'ont aucune preuve de fin. Un groupe formé en 2026 est donc un point, pas une barre ouverte. Pour rendre cela honnêtement, la couche 1 doit lire `ended` et `y_end_source` plutôt que `y_presence_end` seul : c'est le rendu faux le plus probable d'une première intégration.
 
 **Deux sujets restent ouverts pour la couche 1.** Le poids : 15,6 Mo gzip pour la frise, non pas à cause des genres (1,7 Mo) mais des identifiants eux-mêmes, des UUID de 36 octets qui ne se compressent pas ; un chargement initial complet n'est pas réaliste sur mobile, et le découpage par genre ou par période lui revient. Et l'absence de hiérarchie : les 1 348 genres sont **plats**, sans regroupement possible, faute de source fiable — parcourir cette liste à la main n'est pas une interface.
 
-`manifest.json` porte les empreintes des archives, les comptes, les anomalies de lecture de dates, les trois compteurs de neutralisation, les exclusions de densité, le commit et l'empreinte des corrections.
+`manifest.json` porte les empreintes des archives, les comptes, les **paramètres** du run (`dump_year`, `min_year`, `multi_artist_drop_limit`, `min_candidate_credits`), les **entrées** (`rows_loaded` par table brute, le sidecar d'extraction), les anomalies de lecture de dates, les trois compteurs de neutralisation, les exclusions de densité, le commit et l'empreinte des corrections.
 
 ## Chiffres de référence
 
 Le **contrat exécutable** est `tests/test_baseline.py` : il confronte le pipeline entier au dump de référence et compare exactement les comptes, la somme des cellules de densité et la répartition des provenances. Les chiffres cités ici sont descriptifs ; en cas de divergence, c'est le test qui fait foi.
 
-Deux situations, deux conduites, à ne pas confondre. **Sur le dump de référence, un écart signale une règle mal implémentée** — jamais un prétexte pour ajuster la ligne de base. **Sur un nouveau dump, tous les chiffres bougent légitimement**, et la ligne de base se régénère : les cinq comptes, les deux répartitions de provenance, les sept compteurs d'anomalies, les trois de neutralisation et les exclusions de densité. Il faut alors aussi mettre à jour `REFERENCE_DUMP`, la valeur par défaut de `dump_year`, ajouter le `reference/<dump>.SHA256SUMS` correspondant, et modifier à la main les bornes codées en dur dans les vues de `90_invariants.sql` — cette dernière opération est délibérément manuelle, c'est ce qui empêche une mauvaise variable de satisfaire à la fois la règle et son contrôle.
+Deux situations, deux conduites, à ne pas confondre. **Sur le dump de référence, un écart signale une règle mal implémentée** — jamais un prétexte pour ajuster la ligne de base. **Sur un nouveau dump, tous les chiffres bougent légitimement**, et la ligne de base se régénère : les cinq comptes, les deux répartitions de provenance, les sept compteurs d'anomalies, les trois de neutralisation et les exclusions de densité. Il faut alors aussi mettre à jour `REFERENCE_DUMP`, la valeur par défaut de `dump_year`, ajouter le `reference/<dump>.SHA256SUMS` correspondant, et modifier à la main les bornes codées en dur dans les vues de `90_invariants.sql` — cette dernière opération est délibérément manuelle, c'est ce qui empêche une mauvaise variable de satisfaire à la fois la règle et son contrôle. Les extractions vivant dans `data/work/<dump>/`, changer `REFERENCE_DUMP` suffit à repartir d'une extraction neuve, sans rien vider à la main ; le manifeste porte déjà les paramètres du run (section précédente).
 
 Provenance des bords, sur le dump de référence :
 
@@ -116,13 +116,13 @@ Provenance des bords, sur le dump de référence :
 
 - **Aucune hiérarchie de genres n'est publiée.** L'arbre Wikidata a été retiré après mesure : 323 genres sur 1 348 n'y avaient aucun parent, `free jazz` et `zeuhl` étaient rangés sous `classical`, et surtout `black metal`, `death metal`, `thrash metal` et `doom metal` **ne figuraient pas** parmi les descendants de `metal` — les 3ᵉ, 5ᵉ, 15ᵉ et 19ᵉ genres du vocabulaire. Un arbre qui marche pour le rock et casse sur le metal est pire qu'une absence d'arbre : il a l'air de fonctionner. La requête SPARQL reste dans l'historique git.
 
-- **Une fin dérivée d'un album n'est pas une fin déclarée.** Elle est marquée `y_end_source = 'last_album'`. Parmi les groupes concernés ayant au moins deux albums, **3,38 % ont un dernier album isolé de plus de 15 ans** du précédent (1,04 % au-delà de 25) : des rééditions de fonds historiques qui étirent la ligne de vie. Les écarter demanderait un seuil arbitraire ; l'étiquette de provenance laisse la couche 1 trancher.
+- **Une fin dérivée d'un album n'est pas une fin déclarée.** Elle est marquée `y_end_source = 'last_album'`. Parmi les groupes de type `Group` concernés ayant au moins deux albums, **3,38 % ont un dernier album isolé de plus de 15 ans** du précédent (1,04 % au-delà de 25) : des rééditions de fonds historiques qui étirent la ligne de vie. Les écarter demanderait un seuil arbitraire ; l'étiquette de provenance laisse la couche 1 trancher.
 
-- **Le genre est un filtre de notoriété communautaire, et il est daté.** Part d'artistes sans aucun genre, par époque de formation : 69,3 % pour 1967-1979, 72,6 % pour 1980-1999, 78,9 % pour 2000-2014, **82,7 % depuis 2023**. La densité près du présent est doublement une borne basse : par la présence, et parce que les groupes récents sont moins tagués. **L'ordre de grandeur est considérable** : la densité totale culmine en 2016 à 67 567 puis tombe à 11 276 en 2026, soit **−83 % en dix ans**, presque entièrement par artefact. La dernière décennie ne se lit pas comme une tendance.
+- **Le genre est un filtre de notoriété communautaire, et il est daté.** Part de **groupes** sans aucun genre, par époque de formation : 69,3 % pour 1967-1979, 72,6 % pour 1980-1999, 78,9 % pour 2000-2014, **82,7 % depuis 2023**. La densité près du présent est doublement une borne basse : par la présence, et parce que les groupes récents sont moins tagués. **L'ordre de grandeur est considérable** : la densité totale culmine en 2016 à 67 567 puis tombe à 11 276 en 2026, soit **−83 % en dix ans**, presque entièrement par artefact. La dernière décennie ne se lit pas comme une tendance.
 
 - **`density` ignore les orchestres et chœurs**, faute d'un modèle de ligne de vie comparable — ce qui écartait déjà 37,9 % du répertoire savant avant toute mesure. Ils restent dans `bands`, `albums` et `members`.
 
-- **59,6 % des artistes n'ont aucun album** qui passe les règles, et 302 404 n'ont aucune date exploitable. La base est complète par choix : la couche 1 filtre, la couche 0 ne jette pas.
+- **59,3 % des artistes n'ont aucun album** qui passe les règles, et 301 581 n'ont aucun début exploitable. La base est complète par choix : la couche 1 filtre, la couche 0 ne jette pas.
 
 ## Installation, tests, exécution
 
@@ -135,7 +135,7 @@ uv sync
 Deux niveaux de test :
 
 - `uv run pytest` — suite rapide, quelques secondes, sans dépendance au dump. Tourne sur 28 témoins réels versionnés dans `tests/fixtures/` (extraits authentiques du dump de référence, jamais de données inventées) et sur quelques enregistrements synthétiques pour les formes qu'aucun témoin ne porte.
-- `uv run pytest -m slow` — ligne de base : confronte le pipeline entier aux ~3 millions d'enregistrements du dump de référence. Exige les extractions dans `data/work/` (non versionnées, ~10 min à produire) ; sinon le test est ignoré.
+- `uv run pytest -m slow` — ligne de base : confronte le pipeline entier aux ~3 millions d'enregistrements du dump de référence. Exige les extractions dans `data/work/<dump>/` (non versionnées, ~10 min à produire) ; sinon le test est ignoré.
 
 La suite passe depuis n'importe quel répertoire : tous les chemins sont ancrés sur le paquet (`musilogy.paths`), jamais sur le répertoire courant.
 

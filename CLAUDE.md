@@ -11,7 +11,7 @@ sont chiffrées, donc vérifiables.
 
 - **Donner des critères d'acceptation mesurables.** Un agent d'implémentation
   travaille bien quand la réussite est un nombre ou un code de sortie, mal quand
-  c'est une intention. « `density` doit valoir 53 018 cellules » vaut mieux que
+  c'est une intention. « `density` doit valoir 52 201 cellules » vaut mieux que
   « corriger la densité ».
 - **Vérifier un rapport avant de bâtir dessus.** Un compte rendu de sous-agent
   est une affirmation, pas un fait : `git status`, la suite de tests et le
@@ -104,7 +104,6 @@ uv run pytest                 # suite rapide, sur les témoins
 uv run pytest -m slow         # ligne de base sur le dump réel, exige data/work/
 uv run musilogy run           # fetch → extract → transform → validate → publish
 uv run musilogy make-fixtures
-uv run musilogy check-genre-parents
 ```
 
 ## Licence
