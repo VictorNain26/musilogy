@@ -106,9 +106,10 @@ CREATE OR REPLACE VIEW presence_out_of_range AS
           ELSE b.y_end
         END;
 -- Same idiom as 20_albums.sql/last_album_mismatch, for its twin
--- 30_presence.sql: bands.y_presence_end (published in Parquet and
--- web/bands.json.gz) must stay identical to presence.y_presence_end (from
--- which density derives), otherwise the two published artifacts could diverge.
+-- 40_presence.sql: bands.y_presence_end (published in Parquet and in
+-- web/bands_timeline.json.gz / web/bands_rest.json.gz) must stay identical to
+-- presence.y_presence_end (from which density derives), otherwise the two
+-- published artifacts could diverge.
 CREATE OR REPLACE VIEW presence_end_mismatch AS
   SELECT b.mbid FROM bands b JOIN presence p USING (mbid)
   WHERE b.y_presence_end IS DISTINCT FROM p.y_presence_end;
@@ -139,6 +140,11 @@ CREATE OR REPLACE VIEW density_population_mismatch AS
 -- contractual rule instead of reading back the session variables the
 -- production rules depend on. Not an invariant: it legitimately returns rows,
 -- and density_excluded_genre_present / density_missing_cell both read it.
+-- It still shares 55_genre_reliability.sql's secondary-type filter and raw
+-- inputs, so it only catches a drift in the 50/200 bounds or in this
+-- recomputation itself, never an error already present in the shared formula
+-- — a wrong secondary-type filter applied identically on both sides would
+-- stay silent here too.
 CREATE OR REPLACE VIEW genre_unreliable_recomputed AS
   WITH credits AS (
     SELECT unnest(list_distinct(artists)) AS artist_mbid,
