@@ -8,7 +8,7 @@
 --
 -- Years read with yr(), never a direct CAST: an illegible date ("????-01" on
 -- five relations of the reference dump) becomes NULL rather than a guess, the
--- same R2 discipline as everywhere else. The relation itself survives — only
+-- same discipline as everywhere else. The relation itself survives — only
 -- its unreadable edge is absent.
 --
 -- DISTINCT, not a plain projection: MusicBrainz emits one relation per set of

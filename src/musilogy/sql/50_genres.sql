@@ -1,4 +1,4 @@
--- R5. Vocabulary actually carried by bands.
+-- Vocabulary actually carried by bands.
 CREATE OR REPLACE TABLE genres AS
 SELECT g.mbid AS genre_mbid, any_value(g.name) AS name, count(*) AS n_bands
 FROM bands, UNNEST(bands.genres) AS t(g)

@@ -1,8 +1,8 @@
 -- Population. Every artist extracted by extract.py (Group, Orchestra, Choir)
 -- is published, whatever its type, dates or genres: the timeline-specific
--- filtering (R1 of the old model) now lives with the consumer, not here.
+-- filtering of the previous model now lives with the consumer, not here.
 -- dump_year and min_year are provided by build() via SET VARIABLE.
--- The seven boolean columns carry the R2 sub-rules: they decide nothing
+-- The seven boolean columns carry the date sub-rules: they decide nothing
 -- beyond y0_declared/y_end_declared, they just name the same decision so
 -- that publish.py can count it without recomputing it.
 CREATE OR REPLACE TABLE dated AS
@@ -26,7 +26,7 @@ SELECT
     AND yr("end") < yr(begin) AS end_before_begin
 FROM raw_artists;
 
--- R2 counters for manifest.json (§5.3): population = raw_artists, i.e.
+-- Date-anomaly counters for manifest.json: population = raw_artists, i.e.
 -- every group/orchestra/choir extracted, not just `bands` after filtering.
 CREATE OR REPLACE TABLE r2_anomalies AS
 SELECT

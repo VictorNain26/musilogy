@@ -1,5 +1,5 @@
 -- Each view must be empty. The view's name is the invariant's name.
--- Unique and non-null mbid (spec §9.2): a NULL mbid is a violation even
+-- Unique and non-null mbid: a NULL mbid is a violation even
 -- alone, group by NULL does not let it slip through under count(*) = 1.
 CREATE OR REPLACE VIEW duplicate_band AS
   SELECT mbid FROM bands GROUP BY mbid HAVING count(*) > 1 OR mbid IS NULL;
@@ -66,7 +66,7 @@ CREATE OR REPLACE VIEW album_without_band AS
 CREATE OR REPLACE VIEW album_out_of_window AS
   SELECT a.rg_mbid FROM albums a
   WHERE a.y < 1850 OR a.y > 2026;
--- §9.2. `albums` does not keep the secondary types; re-checked via
+--`albums` does not keep the secondary types; re-checked via
 -- rg_mbid against raw_release_groups, which stays available after the build.
 CREATE OR REPLACE VIEW album_extra_secondary_type AS
   SELECT a.rg_mbid FROM albums a JOIN raw_release_groups r ON r.mbid = a.rg_mbid
@@ -85,18 +85,18 @@ CREATE OR REPLACE VIEW band_genres_out_of_order AS
 CREATE OR REPLACE VIEW unknown_genre AS
   SELECT t.g.mbid FROM (SELECT unnest(genres) AS g FROM bands) t
   WHERE NOT EXISTS (SELECT 1 FROM genres g WHERE g.genre_mbid = t.g.mbid);
--- §9.2. Independent recomputation, same rationale as last_album_mismatch.
+--Independent recomputation, same rationale as last_album_mismatch.
 CREATE OR REPLACE VIEW genre_n_bands_mismatch AS
   SELECT g.genre_mbid FROM genres g
   WHERE g.n_bands <> (
     SELECT count(*) FROM bands b, UNNEST(b.genres) AS t(x) WHERE t.x.mbid = g.genre_mbid
   );
--- Independent restatement of R7: presence only ever exists for a band with a
--- non-NULL y0 (the join guarantees it), and its end is the band's end clamped
--- to the dump year. The three cases are enumerated rather than composed back
--- into least(dump_year, coalesce(...)): copying 40_presence.sql's expression
--- would compare the value to itself. 2026 hardcoded at both ends, same
--- reasoning as band_out_of_window above.
+-- Independent restatement of the presence rule: presence only ever exists for
+-- a band with a non-NULL y0 (the join guarantees it), and its end is the
+-- band's end clamped to the dump year. The three cases are enumerated rather
+-- than composed back into least(dump_year, coalesce(...)): copying
+-- 40_presence.sql's expression would compare the value to itself. 2026
+-- hardcoded at both ends, same reasoning as band_out_of_window above.
 CREATE OR REPLACE VIEW presence_out_of_range AS
   SELECT p.mbid FROM presence p JOIN bands b USING (mbid)
   WHERE p.y_presence_end < p.y0 OR p.y_presence_end > 2026
@@ -199,7 +199,7 @@ CREATE OR REPLACE VIEW member_without_person AS
 CREATE OR REPLACE VIEW duplicate_member AS
   SELECT band_mbid, person_mbid, y_begin, y_end FROM members
   GROUP BY ALL HAVING count(*) > 1;
--- §9.2. corrections.csv holds at most 50 rows; materialized even empty
+--corrections.csv holds at most 50 rows; materialized even empty
 -- by apply_corrections, so available without depending on the dump.
 CREATE OR REPLACE VIEW corrections_file_too_large AS
   SELECT count(*) AS n FROM corrections HAVING count(*) > 50;

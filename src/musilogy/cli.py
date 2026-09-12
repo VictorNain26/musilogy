@@ -60,7 +60,7 @@ WITNESSES = [
 
 
 def fetch_and_extract() -> None:
-    """§5.1 fetch → extract. Replayable: fetch_dump does not re-download an
+    """fetch → extract. Replayable: fetch_dump does not re-download an
     archive it has already verified, and extract rewrites its output on every
     call."""
     artist_archive = fetch_dump(DUMP, "artist.tar.xz", RAW_DIR, SUMS_PATH)

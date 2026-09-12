@@ -31,7 +31,7 @@ def load_raw(con: duckdb.DuckDBPyConnection, artists: Path, rgs: Path) -> None:
 
 def apply_corrections(con: duckdb.DuckDBPyConnection, corrections: Path | None) -> int:
     if corrections is None:
-        # Always materialized, even empty: the fast suite (§9.3) builds
+        # Always materialized, even empty: the fast suite builds
         # fixtures with corrections=None, and the corrections_file_too_large
         # invariant reads this table without depending on the dump.
         con.execute(
