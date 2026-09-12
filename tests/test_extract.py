@@ -3,6 +3,8 @@ import logging
 import lzma
 import tarfile
 
+import pytest
+
 from musilogy.extract import extract, iter_records, reduce_artist, reduce_release_group
 
 GROUP = {
@@ -59,6 +61,17 @@ def test_reduce_artist_keeps_only_member_of_band_relations():
 
 def test_reduce_artist_drops_persons():
     assert reduce_artist({"id": "x", "name": "y", "type": "Person"}) is None
+
+
+def test_reduce_artist_refuses_a_genre_without_a_vote_count():
+    # An absent count used to become 0 votes — a measurement asserted where the
+    # source is silent, and the sort of 10_bands.sql would rank it last as if
+    # it had been measured. The dump always emits count; a record without one
+    # is malformed input, and the boundary is where it must fail.
+    with pytest.raises(KeyError):
+        reduce_artist(
+            {"id": "x", "name": "y", "type": "Group", "genres": [{"id": "g", "name": "n"}]}
+        )
 
 
 def test_reduce_release_group_keeps_duplicate_credits():
