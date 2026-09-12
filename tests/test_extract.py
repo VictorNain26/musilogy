@@ -1,0 +1,98 @@
+import io
+import logging
+import lzma
+import tarfile
+
+from musilogy.extract import iter_records, reduce_artist, reduce_release_group
+
+GROUP = {
+    "id": "a9424175-8b06-44ad-a1f4-319e92a50879",
+    "name": "Disincarnate",
+    "type": "Group",
+    "country": "US",
+    "life-span": {"begin": "1992", "end": None, "ended": False},
+    "area": {"name": "United States"},
+    "begin-area": {"name": "Tampa"},
+    "genres": [{"id": "eacfa027-2fad-413f-a2f1-80fa43674f0b", "name": "death metal", "count": 1}],
+    "relations": [
+        {
+            "type": "member of band",
+            "begin": "1991",
+            "end": "1991",
+            "artist": {"id": "5b640e8d-bcb8-45be-a32e-8f4325c8d6c9", "name": "Alex Marquez"},
+        },
+        {"type": "discogs", "url": {"resource": "https://example.invalid"}},
+    ],
+}
+
+
+def test_reduce_artist_keeps_genre_mbid_and_votes():
+    out = reduce_artist(GROUP)
+    assert out is not None
+    assert out["mbid"] == GROUP["id"]
+    assert out["begin"] == "1992"
+    assert out["ended"] is False
+    assert out["begin_area"] == "Tampa"
+    assert out["genres"] == [
+        {"mbid": "eacfa027-2fad-413f-a2f1-80fa43674f0b", "name": "death metal", "votes": 1}
+    ]
+
+
+def test_reduce_artist_drops_area_no_table_consumes():
+    # `area` is present in the source record above and must not survive the
+    # projection: it duplicated `country` and `begin_area`, both published,
+    # for 9.9 MB of the intermediate that no table ever read.
+    out = reduce_artist(GROUP)
+    assert out is not None
+    assert "area" not in out
+    assert out["country"] == "US"
+    assert out["begin_area"] == "Tampa"
+
+
+def test_reduce_artist_keeps_only_member_of_band_relations():
+    out = reduce_artist(GROUP)
+    assert out is not None
+    assert out["members"] == [
+        {"mbid": "5b640e8d-bcb8-45be-a32e-8f4325c8d6c9", "begin": "1991", "end": "1991"}
+    ]
+
+
+def test_reduce_artist_drops_persons():
+    assert reduce_artist({"id": "x", "name": "y", "type": "Person"}) is None
+
+
+def test_reduce_release_group_keeps_duplicate_credits():
+    rec = {
+        "id": "rg",
+        "title": "T",
+        "first-release-date": "1989",
+        "primary-type": "Album",
+        "secondary-types": [],
+        "artist-credit": [{"artist": {"id": "a"}}, {"artist": {"id": "a"}}],
+    }
+    reduced = reduce_release_group(rec)
+    assert reduced is not None
+    assert reduced["artists"] == ["a", "a"]
+
+
+def test_reduce_release_group_drops_singles():
+    assert reduce_release_group({"id": "r", "primary-type": "Single"}) is None
+
+
+def _write_mbdump_archive(path, lines: list[bytes]) -> None:
+    content = b"\n".join(lines) + b"\n"
+    with lzma.open(path, "wb") as xz, tarfile.open(fileobj=xz, mode="w|") as tar:
+        info = tarfile.TarInfo(name="mbdump/mbdump")
+        info.size = len(content)
+        tar.addfile(info, io.BytesIO(content))
+
+
+def test_iter_records_surfaces_malformed_lines_instead_of_dropping_them_silently(tmp_path, caplog):
+    archive = tmp_path / "sample.tar.xz"
+    _write_mbdump_archive(archive, [b'{"id": "ok"}', b"{not json"])
+
+    with caplog.at_level(logging.WARNING):
+        records = list(iter_records(archive))
+
+    assert records == [{"id": "ok"}]
+    assert any("1" in r.message for r in caplog.records)
