@@ -1,0 +1,52 @@
+-- Population. Every artist extracted by extract.py (Group, Orchestra, Choir)
+-- is published, whatever its type, dates or genres: the timeline-specific
+-- filtering (R1 of the old model) now lives with the consumer, not here.
+-- dump_year and min_year are provided by build() via SET VARIABLE.
+-- The seven boolean columns carry the R2 sub-rules: they decide nothing
+-- beyond y0_declared/y_end_declared, they just name the same decision so
+-- that publish.py can count it without recomputing it.
+CREATE OR REPLACE TABLE dated AS
+SELECT
+  mbid, name, type, ended, country, begin_area, genres, members,
+  CASE WHEN yr(begin) BETWEEN getvariable('min_year') AND getvariable('dump_year')
+       THEN yr(begin) END AS y0_declared,
+  -- Same window as the begin, at both ends: an end below min_year is as
+  -- unusable as one in the future.
+  CASE WHEN yr("end") BETWEEN getvariable('min_year') AND getvariable('dump_year')
+        AND (yr(begin) IS NULL OR yr("end") >= yr(begin))
+       THEN yr("end") END AS y_end_declared,
+  begin IS NOT NULL AND yr(begin) IS NULL AS begin_illegible,
+  "end" IS NOT NULL AND yr("end") IS NULL AS end_illegible,
+  yr(begin) IS NOT NULL AND yr(begin) > getvariable('dump_year') AS begin_future,
+  yr("end") IS NOT NULL AND yr("end") > getvariable('dump_year') AS end_future,
+  yr(begin) IS NOT NULL AND yr(begin) < getvariable('min_year') AS begin_below_min_year,
+  yr("end") IS NOT NULL AND yr("end") < getvariable('min_year') AS end_below_min_year,
+  yr(begin) IS NOT NULL AND yr("end") IS NOT NULL
+    AND yr("end") <= getvariable('dump_year')
+    AND yr("end") < yr(begin) AS end_before_begin
+FROM raw_artists;
+
+-- R2 counters for manifest.json (§5.3): population = raw_artists, i.e.
+-- every group/orchestra/choir extracted, not just `bands` after filtering.
+CREATE OR REPLACE TABLE r2_anomalies AS
+SELECT
+  sum(begin_illegible::INTEGER) AS begin_illegible,
+  sum(end_illegible::INTEGER) AS end_illegible,
+  sum(begin_future::INTEGER) AS begin_future,
+  sum(end_future::INTEGER) AS end_future,
+  sum(begin_below_min_year::INTEGER) AS begin_below_min_year,
+  sum(end_below_min_year::INTEGER) AS end_below_min_year,
+  sum(end_before_begin::INTEGER) AS end_before_begin
+FROM dated;
+
+CREATE OR REPLACE TABLE bands AS
+SELECT mbid, name, type, y0_declared, y_end_declared, ended, country, begin_area,
+  -- Explicit sort (votes descending, then name), never inherited from
+  -- the source (alphabetical). list_sort does not accept a lambda comparator
+  -- in 1.5.5: sort by key, projecting each genre onto {k: [-votes], n: name,
+  -- v: genre}, list_sort compares structs field by field.
+  list_transform(
+    list_sort(list_transform(genres, x -> {'k': [-x.votes::INT], 'n': x.name, 'v': x})),
+    y -> y.v
+  ) AS genres
+FROM dated;
