@@ -1,6 +1,9 @@
 import json
+import subprocess
 
 from conftest import FIX
+
+from musilogy.paths import REPO_ROOT
 
 
 def test_every_witness_is_present():
@@ -38,3 +41,19 @@ def test_every_release_group_credits_a_witness():
         for line in fh:
             rec = json.loads(line)
             assert wanted & set(rec["artists"]), rec["mbid"]
+
+
+def test_the_fixture_files_are_not_ignored_by_git():
+    # *.jsonl is ignored repo-wide and the negation still pointed at
+    # pipeline/tests/fixtures/, removed by the restructuring: the witnesses
+    # survived only because they were already in the index. On a fresh clone,
+    # `musilogy make-fixtures` followed by `git add` would drop them silently.
+    for name in ("artists.jsonl", "release_groups.jsonl"):
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", f"tests/fixtures/{name}"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 1, f"tests/fixtures/{name} is ignored: {result.stdout.strip()}"
