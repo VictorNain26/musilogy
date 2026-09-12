@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from typing import Any
 
 import duckdb
 
@@ -81,6 +82,16 @@ def fetch_and_extract() -> None:
     )
 
 
+def _stop_on_extraction_mismatch(manifest: dict[str, Any]) -> None:
+    """`is False`, never a truthiness test: None says the sidecar is absent,
+    unreadable or missing a count, which is silence and not agreement — every
+    extraction predating the sidecar reports exactly that. False says the build
+    loaded something other than what the extraction wrote, so the tables are
+    narrower than their source and nothing downstream can tell."""
+    if manifest["inputs"]["extraction_matches_rows_loaded"] is False:
+        raise SystemExit(f"extraction mismatch: {manifest['inputs']}")
+
+
 def run() -> None:
     """Full execution: fetch → extract (when needed) → transform → validate → publish."""
     if not ARTISTS_JSONL.exists() or not RELEASE_GROUPS_JSONL.exists():
@@ -94,6 +105,7 @@ def run() -> None:
         raise SystemExit(f"invariants violated: {violations}")
 
     manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV, WORK_DIR / "extraction.json")
+    _stop_on_extraction_mismatch(manifest)
     print(manifest["counts"])
 
 
