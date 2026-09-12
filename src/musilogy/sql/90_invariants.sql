@@ -66,7 +66,7 @@ CREATE OR REPLACE VIEW album_without_band AS
 CREATE OR REPLACE VIEW album_out_of_window AS
   SELECT a.rg_mbid FROM albums a
   WHERE a.y < 1850 OR a.y > 2026;
---`albums` does not keep the secondary types; re-checked via
+-- `albums` does not keep the secondary types; re-checked via
 -- rg_mbid against raw_release_groups, which stays available after the build.
 CREATE OR REPLACE VIEW album_extra_secondary_type AS
   SELECT a.rg_mbid FROM albums a JOIN raw_release_groups r ON r.mbid = a.rg_mbid
@@ -85,7 +85,7 @@ CREATE OR REPLACE VIEW band_genres_out_of_order AS
 CREATE OR REPLACE VIEW unknown_genre AS
   SELECT t.g.mbid FROM (SELECT unnest(genres) AS g FROM bands) t
   WHERE NOT EXISTS (SELECT 1 FROM genres g WHERE g.genre_mbid = t.g.mbid);
---Independent recomputation, same rationale as last_album_mismatch.
+-- Independent recomputation, same rationale as last_album_mismatch.
 CREATE OR REPLACE VIEW genre_n_bands_mismatch AS
   SELECT g.genre_mbid FROM genres g
   WHERE g.n_bands <> (
@@ -199,7 +199,7 @@ CREATE OR REPLACE VIEW member_without_person AS
 CREATE OR REPLACE VIEW duplicate_member AS
   SELECT band_mbid, person_mbid, y_begin, y_end FROM members
   GROUP BY ALL HAVING count(*) > 1;
---corrections.csv holds at most 50 rows; materialized even empty
+-- corrections.csv holds at most 50 rows; materialized even empty
 -- by apply_corrections, so available without depending on the dump.
 CREATE OR REPLACE VIEW corrections_file_too_large AS
   SELECT count(*) AS n FROM corrections HAVING count(*) > 50;
