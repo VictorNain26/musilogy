@@ -34,6 +34,13 @@ def load_raw(con: duckdb.DuckDBPyConnection, artists: Path, rgs: Path) -> None:
 
 def apply_corrections(con: duckdb.DuckDBPyConnection, corrections: Path | None) -> int:
     if corrections is None:
+        # Toujours matérialisée, même vide : la suite rapide (§9.3) construit
+        # les fixtures avec corrections=None, et l'invariant
+        # corrections_file_too_large lit cette table sans dépendre du dump.
+        con.execute(
+            "CREATE OR REPLACE TABLE corrections (mbid VARCHAR, champ VARCHAR, "
+            "valeur VARCHAR, justification VARCHAR, source VARCHAR)"
+        )
         return 0
     con.execute(
         "CREATE OR REPLACE TABLE corrections AS SELECT * FROM read_csv("
@@ -73,11 +80,14 @@ def build(
 
 
 INVARIANTS = (
-    "duplicate_band", "band_out_of_window", "end_before_begin",
+    "duplicate_band", "band_out_of_window", "end_before_begin", "end_after_dump_year",
     "last_album_mismatch", "album_without_band", "album_out_of_window",
+    "album_extra_secondary_type",
     "band_without_genre", "band_genres_out_of_order", "unknown_genre",
+    "genre_n_bands_mismatch",
     "presence_out_of_range", "density_out_of_range", "density_above_band_count",
     "genre_parent_unknown_genre", "genre_parent_cycle",
+    "corrections_file_too_large",
 )
 
 

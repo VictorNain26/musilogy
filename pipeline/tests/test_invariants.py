@@ -44,21 +44,48 @@ def test_duplicate_band_is_reported(con):
     assert violations.get("duplicate_band") == 1
 
 
+def test_duplicate_band_catches_null_mbid(con):
+    row = con.execute("SELECT * FROM bands LIMIT 1").fetchone()
+    cols = [d[0] for d in con.description]
+    values = list(row)
+    values[cols.index("mbid")] = None
+    placeholders = ", ".join("?" for _ in cols)
+    con.execute(f"INSERT INTO bands VALUES ({placeholders})", values)
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM bands WHERE mbid IS NULL")
+    assert violations.get("duplicate_band") == 1
+
+
 def test_band_out_of_window_is_reported(con):
     mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    original = con.execute("SELECT y0 FROM bands WHERE mbid = ?", [mbid]).fetchone()[0]
     con.execute("UPDATE bands SET y0 = 1700 WHERE mbid = ?", [mbid])
     violations = dict(check_invariants(con, SQL))
-    con.execute("UPDATE bands SET y0 = 1850 WHERE mbid = ?", [mbid])
+    con.execute("UPDATE bands SET y0 = ? WHERE mbid = ?", [original, mbid])
     assert violations.get("band_out_of_window") == 1
 
 
 def test_end_before_begin_is_reported(con):
     mbid = con.execute("SELECT mbid FROM bands WHERE y0 > 1850 LIMIT 1").fetchone()[0]
     y0 = con.execute("SELECT y0 FROM bands WHERE mbid = ?", [mbid]).fetchone()[0]
+    original = con.execute(
+        "SELECT y_end_declared FROM bands WHERE mbid = ?", [mbid]
+    ).fetchone()[0]
     con.execute("UPDATE bands SET y_end_declared = ? WHERE mbid = ?", [y0 - 1, mbid])
     violations = dict(check_invariants(con, SQL))
-    con.execute("UPDATE bands SET y_end_declared = NULL WHERE mbid = ?", [mbid])
+    con.execute("UPDATE bands SET y_end_declared = ? WHERE mbid = ?", [original, mbid])
     assert violations.get("end_before_begin") == 1
+
+
+def test_end_after_dump_year_is_reported(con):
+    mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    original = con.execute(
+        "SELECT y_end_declared FROM bands WHERE mbid = ?", [mbid]
+    ).fetchone()[0]
+    con.execute("UPDATE bands SET y_end_declared = 2100 WHERE mbid = ?", [mbid])
+    violations = dict(check_invariants(con, SQL))
+    con.execute("UPDATE bands SET y_end_declared = ? WHERE mbid = ?", [original, mbid])
+    assert violations.get("end_after_dump_year") == 1
 
 
 def test_last_album_mismatch_is_reported(con):
@@ -83,6 +110,21 @@ def test_album_out_of_window_is_reported(con):
     violations = dict(check_invariants(con, SQL))
     con.execute("UPDATE albums SET y = ? WHERE rg_mbid = ?", [original, rg_mbid])
     assert violations.get("album_out_of_window") == 1
+
+
+def test_album_extra_secondary_type_is_reported(con):
+    rg_mbid = con.execute("SELECT rg_mbid FROM albums LIMIT 1").fetchone()[0]
+    original = con.execute(
+        "SELECT secondary FROM raw_release_groups WHERE mbid = ?", [rg_mbid]
+    ).fetchone()[0]
+    con.execute(
+        "UPDATE raw_release_groups SET secondary = ['Live'] WHERE mbid = ?", [rg_mbid]
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute(
+        "UPDATE raw_release_groups SET secondary = ? WHERE mbid = ?", [original, rg_mbid]
+    )
+    assert violations.get("album_extra_secondary_type") == 1
 
 
 def test_band_without_genre_is_reported(con):
@@ -123,6 +165,21 @@ def test_unknown_genre_is_reported(con):
     violations = dict(check_invariants(con, SQL))
     con.execute("UPDATE bands SET genres = ? WHERE mbid = ?", [original, mbid])
     assert violations.get("unknown_genre") == 1
+
+
+def test_genre_n_bands_mismatch_is_reported(con):
+    genre_mbid = con.execute("SELECT genre_mbid FROM genres LIMIT 1").fetchone()[0]
+    original = con.execute(
+        "SELECT n_bands FROM genres WHERE genre_mbid = ?", [genre_mbid]
+    ).fetchone()[0]
+    con.execute(
+        "UPDATE genres SET n_bands = ? WHERE genre_mbid = ?", [original + 1, genre_mbid]
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute(
+        "UPDATE genres SET n_bands = ? WHERE genre_mbid = ?", [original, genre_mbid]
+    )
+    assert violations.get("genre_n_bands_mismatch") == 1
 
 
 def test_presence_out_of_range_is_reported(con):
@@ -188,3 +245,13 @@ def test_density_above_band_count_is_reported(con):
         [original_present, genre_mbid, year],
     )
     assert violations.get("density_above_band_count") == 1
+
+
+def test_corrections_file_too_large_is_reported(con):
+    con.execute(
+        "INSERT INTO corrections SELECT 'm' || i, 'begin', '2000', 'j', 's' "
+        "FROM range(51) AS t(i)"
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM corrections")
+    assert violations.get("corrections_file_too_large") == 1
