@@ -1,6 +1,6 @@
 # Couche 0 — pipeline de données · conception
 
-- **Statut** : révision 3 — intègre les deux passes de relecture indépendante du 2026-09-11. Déclarée prête pour un plan d'implémentation par le relecteur ; en attente de relecture humaine.
+- **Statut** : révision 4 — intègre deux passes de relecture indépendante et une revue d'architecture. Prête pour un plan d'implémentation ; en attente de relecture humaine.
 - **Date** : 2026-09-11
 - **Dump de référence** : MusicBrainz JSON dumps `20260909-001002`
 - **Portée** : produire, de façon reproductible et testée, le jeu de données qui alimente la frise (couche 1). Aucune interface ici.
@@ -79,8 +79,9 @@ Wikidata reste candidate pour **l'arbre des genres** uniquement (§6).
 | `country` | texte nul | code pays |
 | `begin_area` | texte nul | zone de formation, telle que dans la source — ville **ou pays** : 10 994 des 42 940 valeurs renseignées sont identiques à la zone générale, donc un pays |
 | `genres` | liste de `(genre_mbid, votes)` | triée par votes décroissants, puis par nom (R5) |
+| `y_presence_end` | entier | **dérivé** — fin de présence calculée par R7 |
 
-Aucun champ « année de fin » calculé (R4).
+Aucune année de fin n'est *inventée* (R4). `y_presence_end` est publiée mais explicitement étiquetée comme dérivation de la couche 0, distincte des trois preuves qui la précèdent : sans elle, la couche 1 réimplémenterait la formule de R7 dans un autre langage, avec un risque de divergence silencieuse.
 
 ### 3.2 `albums`
 
@@ -102,7 +103,7 @@ Aucun champ « année de fin » calculé (R4).
 
 ## 4. Règles
 
-Chaque règle vit dans son propre fichier SQL numéroté et possède ses témoins (§9.1).
+Chaque règle vit dans son propre fichier SQL numéroté et possède ses témoins (§9.1). Les numéros ne forment pas une liste mais un **ordre topologique** : R6 précède R2, qui précède R1, dont dépendent R3 et R5, dont dépend R7. Ils avancent par pas de dix pour qu'une règle s'insère sans renumérotation, et l'en-tête de chaque fichier nomme les tables dont il dépend.
 
 ### R1 — Population
 
@@ -119,6 +120,7 @@ Exclusions assumées :
 
 - **Orchestres et chœurs** : 630 entités avec genre dans la fenêtre. Leur modèle — existence séculaire, répertoire d'autrui — ne correspond pas à une ligne de vie de groupe.
 - **Groupes dont seule la fin est lisible** : 467 groupes avec genre ont une fin valide mais aucune formation valide ; faute de `y0`, ils sont exclus.
+- **Groupes sans genre** : de loin la plus grosse exclusion, et la plus structurante. Sur 229 241 groupes de type `Group` datés dans la fenêtre, **63 487 portent au moins un genre et 165 754 sont écartés, soit 72,3 %**. Un groupe sans genre n'a pas de place sur une frise filtrable par genre, et l'étiquetage communautaire fait office de filtre de notoriété naturel — mais c'est le choix le plus lourd de la couche 0, et il doit être lu comme tel.
 
 Avec ce filtre, la formation la plus ancienne est en 1855 et 9 groupes précèdent 1900.
 
@@ -158,7 +160,7 @@ Effets mesurés :
 
 Limites connues et acceptées :
 
-- Les albums crédités à plusieurs artistes distincts (9,10 % des albums) sont écartés.
+- Les albums crédités à plusieurs artistes distincts (9,10 % des albums) sont écartés, soit 12 067 release-groups pour 189 477 retenus. **Ce biais n'est pas uniforme selon les genres** : rapporté aux albums des groupes portant le genre, il écarte 19,7 % en grindcore, 16,1 % en free improvisation, 14,9 % en dub, 14,3 % en noise, 12,8 % en black metal et 10,4 % en jazz, contre 8,4 % en ambient ou sludge metal. Conséquence à assumer : `density` n'est pas rigoureusement comparable d'un genre à l'autre, et la couche 1 ne doit pas la présenter comme telle.
 - Les éditions contemporaines parallèles sont conservées : les Beatles gardent leurs remontages nord-américains (*Meet The Beatles!*, *Beatles '65*…), réellement publiés à ces dates.
 - **Groupes marqués terminés sans fin valide** (1 741 groupes) : la borne haute retombe sur l'année du dump, faute d'autre information. La fenêtre ne les protège donc pas du bruit posthume : Flesh Field, formé en 1996 et marqué terminé, retient des albums jusqu'en 2026 ; 9 groupes de ce statut retiennent un album de 2026. Une correction R6 sourcée est le seul remède.
 - Même limite pour un groupe séparé dont la source ignore la séparation.
@@ -197,7 +199,7 @@ Le rendu de l'incertitude relève de la couche 1.
 - Fichier `pipeline/corrections.csv`, versionné : `mbid, champ, valeur, justification, source`. Chaque ligne cite une source vérifiable.
 - Appliqué après l'extraction ; les valeurs corrigées passent ensuite par R2 comme n'importe quelle autre.
 - **Le pipeline ne dépend jamais de ce fichier pour fonctionner** : R2 neutralise déjà toute anomalie. Une correction améliore la donnée, elle ne débloque rien.
-- La ligne de base (§9.3) **et les fixtures** (§9.1) se calculent avec un fichier de corrections **vide**. Un test dédié vérifie qu'une correction ne modifie que ce qui dépend du groupe visé : ses lignes de `bands` et d'`albums`, et les cellules de `density` de ses genres.
+- La ligne de base (§9.3) **et les fixtures** (§9.1) se calculent avec un fichier de corrections **vide**. Un test dédié vérifie qu'une correction ne modifie que ce qui dépend du groupe visé : ses lignes de `bands` et d'`albums`, les cellules de `density` de ses genres, et `genres.n_bands` si la correction peut faire entrer ou sortir le groupe du périmètre.
 - Garde-fou : un test échoue au-delà de 50 lignes. Au-delà, c'est une règle qui est fausse, pas la donnée.
 - Erreurs réelles identifiées parmi les groupes avec genre : **11** (6 formations illisibles, 3 fins illisibles, 1 formation en 2088, 1 fin antérieure au début), dont 4 dans la population R1. Elles doivent être corrigées **en amont** sur MusicBrainz par le porteur du projet.
 
@@ -257,7 +259,9 @@ vérifiée
 
 - `pipeline/reference/20260909-001002.SHA256SUMS` (versionné) contient les empreintes officielles des deux archives de référence, copiées depuis le serveur.
 - Les archives elles-mêmes sont conservées localement dans `data/raw/20260909-001002/` (non versionné, ~3 Go) ; `fetch` refuse toute archive dont l'empreinte diffère.
-- Chaque exécution écrit un `manifest.json` : date du dump, empreintes des archives, comptes de chaque table, identifiant du commit, empreinte de `corrections.csv`.
+- La réponse SPARQL de Wikidata est archivée et datée : `pipeline/reference/20260912-wikidata-genre-parents.csv`, empreinte dans le `.sha256` voisin. Versionner la requête ne fige pas la réponse ; le pipeline lit l'archive, jamais le service en direct.
+- Chaque étape est idempotente et rejouable depuis son entrée : `fetch` ne retélécharge pas une archive déjà vérifiée, `extract` réécrit sa sortie, `transform` recrée ses tables avec `CREATE OR REPLACE`.
+- Chaque exécution écrit un `manifest.json` : date du dump, empreintes des archives, comptes de chaque table, compteurs d'anomalies R2, identifiant du commit, empreinte de `corrections.csv`.
 
 ---
 
@@ -267,12 +271,12 @@ Le schéma est fixé (`genre_parents`, §3.4) ; la source ne l'est pas.
 
 | Candidate | État mesuré |
 |---|---|
-| **Wikidata** `P279` (sous-classe de), jointe **par MBID** via `P8052` | L'export compte 2 179 MBID distincts portant `P8052`. Sur nos 1 236 genres : 1 236 ont un MBID MusicBrainz, 1 235 sont connus de Wikidata, 967 ont au moins un parent, **951 ont au moins un parent présent dans le vocabulaire (77 %)**. 224 genres ont plusieurs parents. 17 parents distincts sont hors vocabulaire — tous des genres MusicBrainz qu'aucun de nos groupes ne porte. Restreint au vocabulaire : 1 195 arêtes, aucun cycle, 285 racines ; seul `rapcore` n'a pas d'entrée Wikidata. Biais de mesure : l'export ne retient que les parents qui portent eux-mêmes `P8052` ; un parent Wikidata sans équivalent MusicBrainz est invisible. Requête versionnée : `pipeline/reference/wikidata_genre_parents.rq`. |
+| **Wikidata** `P279` (sous-classe de), jointe **par MBID** via `P8052` | L'export compte 2 179 MBID distincts portant `P8052`. Sur nos 1 236 genres : 1 236 ont un MBID MusicBrainz, 1 235 sont connus de Wikidata, 967 ont au moins un parent, **951 ont au moins un parent présent dans le vocabulaire (77 %)**. 224 genres ont plusieurs parents. 17 parents distincts sont hors vocabulaire — tous des genres MusicBrainz qu'aucun de nos groupes ne porte. Restreint au vocabulaire : 1 195 arêtes, aucun cycle, 285 racines ; seul `rapcore` n'a pas d'entrée Wikidata. Biais de mesure : l'export ne retient que les parents qui portent eux-mêmes `P8052` ; un parent Wikidata sans équivalent MusicBrainz est invisible. Requête versionnée : `pipeline/reference/wikidata_genre_parents.rq` ; réponse archivée et horodatée : `pipeline/reference/20260912-wikidata-genre-parents.csv`. |
 | **MusicBrainz**, relation `subgenre` | Affichée sur les pages HTML des genres (« subgenre of: »). L'API ne la sert pas : `ws/2/genre/<id>?inc=genre-rels` répond HTTP 200 **sans** relations. Absente des dumps JSON (aucun dump `genre`). Présence dans le dump PostgreSQL : **non vérifiée**. |
 
 Joint par MBID, il n'existe pas de doublons de racines : `rock`, `pop`, `electronic` et `hip hop` correspondent chacun à une seule entrée Wikidata.
 
-Première tâche du plan : mesurer la couverture de la relation MusicBrainz par un moyen autorisé, puis retenir MusicBrainz, Wikidata, ou les deux avec la colonne `source`. D'ici là, `genre_parents` peut rester vide sans bloquer les autres tables.
+Chantier parallèle, découplé du reste : mesurer la couverture de la relation MusicBrainz par un moyen autorisé, puis retenir MusicBrainz, Wikidata, ou les deux avec la colonne `source`. **Critère de repli** : si la mesure n'aboutit pas, Wikidata seule fait foi, à 951 genres sur 1 236. D'ici là, `genre_parents` peut rester vide sans bloquer les autres tables.
 
 ---
 

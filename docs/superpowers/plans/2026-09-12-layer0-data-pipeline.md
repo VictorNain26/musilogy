@@ -20,6 +20,7 @@
 - Le MBID est la seule clé de jointure (R8). Aucune jointure par nom, nulle part.
 - Toute lecture d'année passe par la macro `yr()` (Task 4). Jamais de `CAST` direct : des dates valent littéralement `????`.
 - `User-Agent` obligatoire sur toute requête réseau : `musilogy/0.1 ( victor.lenain26@gmail.com )`.
+- Arbre des genres : lire l'archive datée `pipeline/reference/20260912-wikidata-genre-parents.csv` (empreinte dans le `.sha256` voisin), jamais le service SPARQL en direct.
 - Licence du jeu produit : CC-BY-NC-SA 3.0, attribution MusicBrainz.
 - Français dans la documentation, anglais dans le code, les noms de fichiers et les commits.
 
@@ -874,7 +875,7 @@ git commit -m "feat(pipeline): implement R3 album selection"
 
 **Interfaces:**
 - Consumes: Task 6 (`albums`).
-- Produces: colonne `bands.y_last_album` ; table `presence(mbid, y0, y_presence_end)`.
+- Produces: colonnes `bands.y_last_album` et `bands.y_presence_end` ; table `presence(mbid, y0, y_presence_end)`.
 
 - [ ] **Step 1: Écrire le test qui échoue**
 
@@ -927,6 +928,13 @@ def test_no_band_is_present_after_its_declared_end(con):
         SELECT count(*) FROM presence p JOIN bands b USING (mbid)
         WHERE b.y_end_declared IS NOT NULL AND p.y_presence_end > b.y_end_declared
     """).fetchall() == [(0,)]
+
+
+def test_presence_end_is_published_on_bands(con):
+    assert con.execute("""
+        SELECT count(*) FROM bands b JOIN presence p USING (mbid)
+        WHERE b.y_presence_end IS DISTINCT FROM p.y_presence_end
+    """).fetchall() == [(0,)]
 ```
 
 - [ ] **Step 2: Lancer le test pour vérifier qu'il échoue**
@@ -958,6 +966,12 @@ SELECT
          ELSE greatest(y0, coalesce(y_last_album, y0)) END
   ) AS y_presence_end
 FROM bands;
+
+-- Publiée sur bands : sans elle, la couche 1 réimplémenterait R7.
+ALTER TABLE bands ADD COLUMN y_presence_end INTEGER;
+UPDATE bands SET y_presence_end = (
+  SELECT p.y_presence_end FROM presence p WHERE p.mbid = bands.mbid
+);
 ```
 
 - [ ] **Step 4: Lancer le test pour vérifier qu'il passe**
@@ -1216,6 +1230,18 @@ def test_a_correction_touches_no_other_band(tmp_path):
     assert before == after
 
 
+def test_genre_counts_stay_consistent_after_a_correction(tmp_path):
+    con = build_with(
+        tmp_path,
+        [f'{BLACKDEATH},end,2007,"fin réelle","https://example.invalid/source"\n'],
+    )
+    assert con.execute("""
+        SELECT count(*) FROM genres g WHERE g.n_bands <> (
+          SELECT count(*) FROM bands b
+          WHERE list_contains(list_transform(b.genres, x -> x.mbid), g.genre_mbid))
+    """).fetchall() == [(0,)]
+
+
 def test_corrections_file_stays_small():
     path = Path("pipeline/corrections.csv")
     assert len(path.read_text(encoding="utf-8").splitlines()) - 1 <= 50
@@ -1389,37 +1415,33 @@ git commit -m "feat(pipeline): add output invariants"
 ### Task 12: Arbre des genres
 
 **Files:**
-- Create: `scripts/fetch_genre_parents.py`, `pipeline/sql/60_genre_parents.sql`
+- Create: `scripts/check_genre_parents.py`, `pipeline/sql/60_genre_parents.sql`
 - Test: `pipeline/tests/test_genre_parents.py`
 
 **Interfaces:**
 - Consumes: Task 8 (`genres`), `pipeline/reference/wikidata_genre_parents.rq`.
 - Produces: `data/work/genre_parents.csv` (colonnes `mbid,nom,parentMbid,parentNom`) ; table `genre_parents(genre_mbid, parent_mbid, source)`.
 
-**Décision préalable, à trancher avant d'écrire le SQL :** la spec §6 laisse la source ouverte. Mesurer d'abord la couverture de la relation `subgenre` de MusicBrainz par un moyen autorisé (le dump PostgreSQL contient peut-être `l_genre_genre` ; l'API ne sert pas les relations). Si la couverture est inférieure à celle de Wikidata (951 genres sur 1 236), retenir Wikidata seule et le noter dans la spec. La table porte une colonne `source` précisément pour que les deux puissent coexister plus tard.
+**Décision préalable, à trancher avant d'écrire le SQL :** la spec §6 laisse la source ouverte. Mesurer d'abord la couverture de la relation `subgenre` de MusicBrainz par un moyen autorisé (le dump PostgreSQL contient peut-être `l_genre_genre` ; l'API ne sert pas les relations). Si la couverture est inférieure à celle de Wikidata (951 genres sur 1 236), ou si la mesure n'aboutit pas, retenir Wikidata seule et le noter dans la spec. La table porte une colonne `source` précisément pour que les deux puissent coexister plus tard.
 
-- [ ] **Step 1: Récupérer l'export Wikidata**
+- [ ] **Step 1: Vérifier l'archive Wikidata (aucun appel réseau)**
 
 ```python
-# scripts/fetch_genre_parents.py
-"""Exécute la requête SPARQL versionnée et écrit l'export brut."""
-import urllib.parse
-import urllib.request
+# scripts/check_genre_parents.py
+"""Vérifie l'archive Wikidata contre son empreinte. Aucun appel réseau."""
 from pathlib import Path
 
-UA = "musilogy/0.1 ( victor.lenain26@gmail.com )"
-QUERY = Path("pipeline/reference/wikidata_genre_parents.rq").read_text(encoding="utf-8")
-url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode({"query": QUERY})
-req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/csv"})
-out = Path("data/work/genre_parents.csv")
-out.parent.mkdir(parents=True, exist_ok=True)
-with urllib.request.urlopen(req, timeout=180) as r:
-    out.write_bytes(r.read())
-print(out, out.stat().st_size, "octets")
+from pipeline.fetch import sha256_file
+
+csv = Path("pipeline/reference/20260912-wikidata-genre-parents.csv")
+expected = Path(str(csv) + ".sha256").read_text(encoding="utf-8").split()[0]
+actual = sha256_file(csv)
+assert actual == expected, f"archive alteree : {actual} != {expected}"
+print(csv, sum(1 for _ in open(csv, encoding="utf-8")), "lignes")
 ```
 
-Run: `uv run python scripts/fetch_genre_parents.py`
-Expected: un fichier d'environ 2 500 lignes.
+Run: `uv run python scripts/check_genre_parents.py`
+Expected: `2515 lignes`, aucune exception. La requête qui a produit cette archive est versionnée dans `pipeline/reference/wikidata_genre_parents.rq` ; la rejouer donnerait un graphe différent, c'est pourquoi le pipeline lit l'archive.
 
 - [ ] **Step 2: Écrire le test qui échoue**
 
@@ -1467,14 +1489,14 @@ def test_source_is_recorded(con):
 -- §6. Relation multivaluée : un genre peut avoir plusieurs parents assertés.
 CREATE OR REPLACE TABLE genre_parents AS
 SELECT DISTINCT w.mbid AS genre_mbid, w.parentMbid AS parent_mbid, 'wikidata' AS source
-FROM read_csv('data/work/genre_parents.csv', header=true) w
+FROM read_csv('pipeline/reference/20260912-wikidata-genre-parents.csv', header=true) w
 WHERE w.parentMbid IS NOT NULL
   AND w.mbid IN (SELECT genre_mbid FROM genres)
   AND w.parentMbid IN (SELECT genre_mbid FROM genres)
   AND w.mbid <> w.parentMbid;
 ```
 
-Note : ce fichier lit un chemin fixe. Si `data/work/genre_parents.csv` est absent, `build()` doit créer une table `genre_parents` vide plutôt que d'échouer — la spec autorise explicitement une table vide.
+Note : le chemin est celui de l'archive versionnée, pas une sortie de travail. Si le fichier est absent, `build()` doit créer une table `genre_parents` vide plutôt que d'échouer — la spec autorise explicitement une table vide.
 
 - [ ] **Step 4: Lancer les tests**
 
@@ -1484,7 +1506,7 @@ Expected: PASS, 3 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/fetch_genre_parents.py pipeline/sql/60_genre_parents.sql pipeline/tests/test_genre_parents.py
+git add scripts/check_genre_parents.py pipeline/sql/60_genre_parents.sql pipeline/tests/test_genre_parents.py
 git commit -m "feat(pipeline): build genre parent relation from Wikidata"
 ```
 
@@ -1533,7 +1555,7 @@ def test_publish_writes_every_table(con, tmp_path):
 def test_web_export_is_columnar_and_gzipped(con, tmp_path):
     publish(con, tmp_path, "20260909-001002", None)
     data = json.loads(gzip.decompress((tmp_path / "web" / "bands.json.gz").read_bytes()))
-    assert set(data) >= {"name", "y0", "y_end_declared", "y_last_album"}
+    assert set(data) >= {"name", "y0", "y_end_declared", "y_last_album", "y_presence_end"}
     assert len(data["name"]) == len(data["y0"])
 ```
 
@@ -1558,8 +1580,8 @@ import duckdb
 
 TABLES = ("bands", "albums", "genres", "genre_parents", "density")
 WEB_COLUMNS = {
-    "bands": ["name", "y0", "y_end_declared", "y_last_album", "ended",
-              "country", "begin_area"],
+    "bands": ["name", "y0", "y_end_declared", "y_last_album", "y_presence_end",
+              "ended", "country", "begin_area"],
     "genres": ["genre_mbid", "name", "n_bands"],
 }
 
