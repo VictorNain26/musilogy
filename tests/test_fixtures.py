@@ -56,4 +56,10 @@ def test_the_fixture_files_are_not_ignored_by_git():
             text=True,
             check=False,
         )
+        # 128 means git itself failed (e.g. run outside a repository), not
+        # that the path is tracked: conflating it with the "not ignored" case
+        # would report a false pass instead of an unanswerable check.
+        assert result.returncode != 128, (
+            f"git check-ignore could not answer for tests/fixtures/{name}: {result.stderr.strip()}"
+        )
         assert result.returncode == 1, f"tests/fixtures/{name} is ignored: {result.stdout.strip()}"
