@@ -9,7 +9,15 @@ SELECT
 FROM raw_artists;
 
 CREATE OR REPLACE TABLE bands AS
-SELECT mbid, name, y0, y_end_declared, ended, country, begin_area, genres
+SELECT mbid, name, y0, y_end_declared, ended, country, begin_area,
+  -- R5. Tri posé (votes décroissants puis nom), jamais hérité de la source
+  -- (alphabétique). list_sort n'accepte pas de comparateur lambda en 1.5.5 :
+  -- on trie par clé en projetant chaque genre sur {k: [-votes], n: name, v:
+  -- genre}, list_sort comparant les structs champ par champ.
+  list_transform(
+    list_sort(list_transform(genres, x -> {'k': [-x.votes::INT], 'n': x.name, 'v': x})),
+    y -> y.v
+  ) AS genres
 FROM dated
 WHERE type = 'Group'
   AND y0 BETWEEN 1850 AND getvariable('dump_year')
