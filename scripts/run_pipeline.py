@@ -3,12 +3,12 @@ from pathlib import Path
 
 import duckdb
 
+from pipeline import REFERENCE_DUMP as DUMP
 from pipeline.build import build, check_invariants
 from pipeline.extract import extract, reduce_artist, reduce_release_group
 from pipeline.fetch import fetch_dump
 from pipeline.publish import publish
 
-DUMP = "20260909-001002"
 RAW_DIR = Path("data/raw")
 WORK_DIR = Path("data/work")
 SUMS_PATH = Path("pipeline/reference") / f"{DUMP}.SHA256SUMS"

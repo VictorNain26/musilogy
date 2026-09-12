@@ -1,8 +1,9 @@
 import pytest
 from pathlib import Path
+from pipeline import REFERENCE_DUMP
 from pipeline.fetch import sha256_file, expected_sums, verify, ChecksumError
 
-REF = Path("pipeline/reference/20260909-001002.SHA256SUMS")
+REF = Path("pipeline/reference") / f"{REFERENCE_DUMP}.SHA256SUMS"
 
 
 def test_sha256_of_known_content(tmp_path):

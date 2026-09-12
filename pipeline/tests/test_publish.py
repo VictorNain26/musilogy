@@ -4,13 +4,13 @@ import subprocess
 from pathlib import Path
 import duckdb
 import pytest
+from pipeline import REFERENCE_DUMP as DUMP
 from pipeline.build import build
 from pipeline.fetch import expected_sums, sha256_file
 from pipeline.publish import publish
 
 FIX = Path("pipeline/tests/fixtures")
 SQL = Path("pipeline/sql")
-DUMP = "20260909-001002"
 REF_SUMS = Path("pipeline/reference") / f"{DUMP}.SHA256SUMS"
 
 
