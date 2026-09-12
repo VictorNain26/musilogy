@@ -338,6 +338,18 @@ def test_manifest_survives_an_extraction_record_that_is_not_an_object(con, tmp_p
     assert manifest["inputs"]["extraction"] == {"unreadable": True}
 
 
+def test_manifest_survives_a_sidecar_truncated_mid_character(con, tmp_path):
+    # MusicBrainz names are full of non-ASCII; a truncation landing inside a
+    # multi-byte character fails at decode, before json.loads ever runs,
+    # raising UnicodeDecodeError rather than JSONDecodeError. This fails if the
+    # except clause is narrowed back to json.JSONDecodeError alone.
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_bytes('{"name": "Motörhead"}'.encode()[:14])
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["counts"]
+    assert manifest["inputs"]["extraction"] == {"unreadable": True}
+
+
 def test_manifest_says_so_when_the_extraction_path_does_not_exist(con, tmp_path):
     manifest = publish(con, tmp_path, DUMP, None, tmp_path / "missing-extraction.json")
     assert manifest["inputs"]["extraction"] is None

@@ -92,12 +92,15 @@ def _extraction(path: Path | None) -> dict[str, Any] | None:
     the very failure it exists to reveal — a truncated extraction — is the one
     that can leave it unparseable: a bare json.loads would take the whole
     manifest down with it, losing the counts and the parameters, which have
-    nothing to do with the sidecar."""
+    nothing to do with the sidecar. A file truncated mid-character fails at
+    decode before parsing ever runs, raising UnicodeDecodeError rather than
+    JSONDecodeError; both are ValueErrors, so catching ValueError covers each
+    without naming them separately."""
     if path is None or not path.exists():
         return None
     try:
         recorded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):
         return {"unreadable": True}
     return recorded if isinstance(recorded, dict) else {"unreadable": True}
 
