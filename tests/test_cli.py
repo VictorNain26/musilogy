@@ -65,7 +65,17 @@ def test_run_refuses_to_publish_when_the_extraction_disagrees(tmp_path, monkeypa
     monkeypatch.setattr(cli, "ARTISTS_JSONL", FIX / "artists.jsonl")
     monkeypatch.setattr(cli, "RELEASE_GROUPS_JSONL", FIX / "release_groups.jsonl")
     monkeypatch.setattr(cli, "WORK_DIR", tmp_path)
-    monkeypatch.setattr(cli, "publish", lambda *args: published.append(args))
+
+    def record_publish(*args):
+        # Returns a plausible manifest on purpose: a double returning None
+        # would make run() die on print(manifest["counts"]) instead, and this
+        # test would then fail on a TypeError rather than on the assertion
+        # below — failing for the wrong reason is how a test stops describing
+        # what it checks.
+        published.append(args)
+        return {"counts": {}}
+
+    monkeypatch.setattr(cli, "publish", record_publish)
     sidecar(tmp_path, 1, 1)
 
     with pytest.raises(SystemExit) as raised:
