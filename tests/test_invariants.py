@@ -1,10 +1,17 @@
+import re
 from contextlib import contextmanager
 
 import duckdb
 import pytest
 from conftest import FIX, SQL, build_synthetic, unreliable_genre_records
 
-from musilogy.build import build, check_invariants
+from musilogy.build import INVARIANTS, build, check_invariants
+from musilogy.paths import SQL_DIR
+
+# genre_unreliable_recomputed is a helper other invariants read, not itself an
+# invariant (it legitimately returns rows): its exclusion from INVARIANTS is a
+# written decision, not the oversight this test otherwise guards against.
+VIEWS_NOT_CHECKED_AS_INVARIANTS = {"genre_unreliable_recomputed"}
 
 
 @contextmanager
@@ -17,6 +24,17 @@ def restored(con, *undo):
     finally:
         for sql, params in undo:
             con.execute(sql, params)
+
+
+def test_every_view_defined_in_90_invariants_is_registered_in_invariants():
+    # Case this must catch: a view added to 90_invariants.sql without also
+    # being added to build.INVARIANTS. check_invariants iterates INVARIANTS,
+    # not the SQL file, so an unregistered view is created on every build and
+    # never queried — it looks like a check and is not one. The campaign
+    # crossed this seam three times by hand before this test existed.
+    sql = (SQL_DIR / "90_invariants.sql").read_text(encoding="utf-8")
+    defined_views = set(re.findall(r"CREATE OR REPLACE VIEW (\w+)", sql))
+    assert defined_views - set(INVARIANTS) == VIEWS_NOT_CHECKED_AS_INVARIANTS
 
 
 def test_build_skips_90_files():
