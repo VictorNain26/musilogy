@@ -20,6 +20,6 @@ WHERE b.type = 'Group'
     SELECT 1 FROM genres gx
     WHERE gx.genre_mbid = t.g.mbid
       AND gx.multi_artist_drop_pct >= getvariable('multi_artist_drop_limit')
-      AND gx.n_candidate_albums >= getvariable('min_candidate_albums')
+      AND gx.n_candidate_credits >= getvariable('min_candidate_credits')
   )
 GROUP BY g.mbid, y.year;

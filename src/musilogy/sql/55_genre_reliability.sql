@@ -23,21 +23,26 @@ credits AS (
 )
 SELECT
   t.g.mbid AS genre_mbid,
-  count(*) AS n_candidate_albums,
+  -- Credited (release-group, genre) rows, not distinct release-groups: a
+  -- release-group credited to two artists that both carry the genre counts
+  -- twice, which is the right weighting for the rate below and the wrong one
+  -- for anything that reads it as an album count. `classical` measures 27 199
+  -- credit rows for 25 465 distinct candidate release-groups.
+  count(*) AS n_candidate_credits,
   round(100.0 * sum(c.multi::INTEGER) / count(*), 1) AS multi_artist_drop_pct
 FROM credits c
 JOIN bands b ON b.mbid = c.artist_mbid,
      UNNEST(b.genres) AS t(g)
 GROUP BY t.g.mbid;
 
-ALTER TABLE genres ADD COLUMN n_candidate_albums BIGINT;
+ALTER TABLE genres ADD COLUMN n_candidate_credits BIGINT;
 ALTER TABLE genres ADD COLUMN multi_artist_drop_pct DOUBLE;
 -- A genre whose bands credit no candidate release-group has zero candidates —
 -- a measured fact — but no rate at all: the share stays NULL rather than being
 -- published as 0%, which would assert a measurement nobody could make.
 UPDATE genres SET
-  n_candidate_albums = coalesce((
-    SELECT d.n_candidate_albums FROM genre_multi_artist_drop d
+  n_candidate_credits = coalesce((
+    SELECT d.n_candidate_credits FROM genre_multi_artist_drop d
     WHERE d.genre_mbid = genres.genre_mbid
   ), 0),
   multi_artist_drop_pct = (
@@ -55,4 +60,4 @@ CREATE OR REPLACE TABLE density_exclusions AS
 SELECT count(*) AS genres, coalesce(sum(n_bands), 0) AS band_genre_pairs
 FROM genres
 WHERE multi_artist_drop_pct >= getvariable('multi_artist_drop_limit')
-  AND n_candidate_albums >= getvariable('min_candidate_albums');
+  AND n_candidate_credits >= getvariable('min_candidate_credits');

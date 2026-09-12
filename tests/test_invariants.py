@@ -432,7 +432,7 @@ def test_density_excluded_genre_present_does_not_read_back_the_published_measure
     artists, release_groups = unreliable_genre_records()
     c = build_synthetic(tmp_path, artists, release_groups)
     c.execute("INSERT INTO density VALUES ('g-excluded', 1990, 1)")
-    c.execute("UPDATE genres SET multi_artist_drop_pct = 0, n_candidate_albums = 0")
+    c.execute("UPDATE genres SET multi_artist_drop_pct = 0, n_candidate_credits = 0")
     violations = dict(check_invariants(c, SQL))
     assert violations.get("density_excluded_genre_present") == 1
 
@@ -573,7 +573,7 @@ def test_density_missing_cell_does_not_read_back_the_published_measurement(tmp_p
     # genres.multi_artist_drop_pct would start demanding g-excluded's cells.
     artists, release_groups = unreliable_genre_records()
     c = build_synthetic(tmp_path, artists, release_groups)
-    c.execute("UPDATE genres SET multi_artist_drop_pct = 0, n_candidate_albums = 0")
+    c.execute("UPDATE genres SET multi_artist_drop_pct = 0, n_candidate_credits = 0")
     assert check_invariants(c, SQL) == []
 
 

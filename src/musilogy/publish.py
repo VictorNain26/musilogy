@@ -43,7 +43,7 @@ WEB_COLUMNS = {
     # consumer cannot apply the exclusion rule of 60_density.sql, recomputes
     # density from bands_timeline alone, and silently invents the 828 cells of
     # the art-music genres this layer deliberately withholds.
-    "genres": ["genre_mbid", "name", "n_bands", "n_candidate_albums", "multi_artist_drop_pct"],
+    "genres": ["genre_mbid", "name", "n_bands", "n_candidate_credits", "multi_artist_drop_pct"],
     # Published too, so the frieze reads the aggregate rather than rebuilding
     # it: a consumer that recomputes it reimplements a rule, and reimplementing
     # is where the exclusion gets lost.
@@ -105,7 +105,7 @@ def _extraction(path: Path | None) -> dict[str, Any] | None:
     return recorded if isinstance(recorded, dict) else {"unreadable": True}
 
 
-PARAMETERS = ("dump_year", "min_year", "multi_artist_drop_limit", "min_candidate_albums")
+PARAMETERS = ("dump_year", "min_year", "multi_artist_drop_limit", "min_candidate_credits")
 
 
 def _parameters(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:

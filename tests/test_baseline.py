@@ -109,7 +109,7 @@ def test_reference_dump_matches_the_baseline():
 
     for name, expected_measure in MULTI_ARTIST_DROP.items():
         row = con.execute(
-            "SELECT n_candidate_albums, multi_artist_drop_pct FROM genres WHERE name = ?", [name]
+            "SELECT n_candidate_credits, multi_artist_drop_pct FROM genres WHERE name = ?", [name]
         ).fetchone()
         assert row == expected_measure, f"{name}: expected {expected_measure}, got {row}"
 
@@ -117,7 +117,7 @@ def test_reference_dump_matches_the_baseline():
     # genre keeps a density row, and `classical` is still a genre.
     row = con.execute(
         "SELECT count(DISTINCT d.genre_mbid) FROM density d JOIN genres g USING (genre_mbid) "
-        "WHERE g.multi_artist_drop_pct >= 50 AND g.n_candidate_albums >= 200"
+        "WHERE g.multi_artist_drop_pct >= 50 AND g.n_candidate_credits >= 200"
     ).fetchone()
     assert row is not None
     assert row[0] == 0

@@ -92,7 +92,7 @@ def test_web_artifacts_alone_reproduce_the_published_density(tmp_path):
         for mbid, pct, n in zip(
             vocabulary["genre_mbid"],
             vocabulary["multi_artist_drop_pct"],
-            vocabulary["n_candidate_albums"],
+            vocabulary["n_candidate_credits"],
             strict=True,
         )
         if pct is not None and pct >= 50 and n >= 200
@@ -267,14 +267,14 @@ def test_manifest_carries_the_parameters_the_build_actually_used(tmp_path):
     # the build used rather than what the caller meant to set.
     artists, release_groups = unreliable_genre_records()
     c = build_synthetic(
-        tmp_path, artists, release_groups, min_candidate_albums=5, multi_artist_drop_limit=99.5
+        tmp_path, artists, release_groups, min_candidate_credits=5, multi_artist_drop_limit=99.5
     )
     manifest = publish(c, tmp_path / "out", DUMP, None)
     assert manifest["parameters"] == {
         "dump_year": 2026,
         "min_year": 1850,
         "multi_artist_drop_limit": 99.5,
-        "min_candidate_albums": 5,
+        "min_candidate_credits": 5,
     }
 
 

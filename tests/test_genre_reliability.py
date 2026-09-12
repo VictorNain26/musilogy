@@ -10,7 +10,7 @@ def c(tmp_path_factory):
 
 def measurement(con, genre_mbid):
     return con.execute(
-        "SELECT n_candidate_albums, multi_artist_drop_pct FROM genres WHERE genre_mbid = ?",
+        "SELECT n_candidate_credits, multi_artist_drop_pct FROM genres WHERE genre_mbid = ?",
         [genre_mbid],
     ).fetchone()
 
@@ -78,7 +78,7 @@ def test_the_sample_minimum_is_a_session_variable(tmp_path):
     # Same records, minimum lowered under g-small's 10 candidates: it must now
     # be excluded too. A minimum hardcoded in the SQL would ignore this.
     artists, release_groups = unreliable_genre_records()
-    c = build_synthetic(tmp_path, artists, release_groups, min_candidate_albums=5)
+    c = build_synthetic(tmp_path, artists, release_groups, min_candidate_credits=5)
     assert density_rows(c, "g-small") == 0
     assert density_rows(c, "g-clean") > 0
 

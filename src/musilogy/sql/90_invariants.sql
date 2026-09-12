@@ -132,7 +132,7 @@ CREATE OR REPLACE VIEW density_population_mismatch AS
       AND d.year BETWEEN b.y0 AND b.y_presence_end
   );
 -- The multi-artist unreliability, recomputed from raw_release_groups and
--- bands, never from genres.n_candidate_albums / genres.multi_artist_drop_pct:
+-- bands, never from genres.n_candidate_credits / genres.multi_artist_drop_pct:
 -- reading back the published measurement would compare it to itself and stay
 -- silent if the measurement itself were wrong. 50 and 200 hardcoded, like
 -- [1850, 2026] above and for the same reason — these views re-assert the

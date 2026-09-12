@@ -64,7 +64,7 @@ def build(
     dump_year: int = 2026,
     min_year: int = 1850,
     multi_artist_drop_limit: float = 50.0,
-    min_candidate_albums: int = 200,
+    min_candidate_credits: int = 200,
 ) -> None:
     load_raw(con, artists, rgs)
     apply_corrections(con, corrections)
@@ -75,7 +75,7 @@ def build(
     # a rule that removes data must be readable and overridable from here,
     # not buried in a literal inside the SQL that applies it.
     con.execute(f"SET VARIABLE multi_artist_drop_limit = {multi_artist_drop_limit}")
-    con.execute(f"SET VARIABLE min_candidate_albums = {min_candidate_albums}")
+    con.execute(f"SET VARIABLE min_candidate_credits = {min_candidate_credits}")
     for path in sorted(sql_dir.glob("*.sql")):
         if path.name.startswith("90_"):
             continue
