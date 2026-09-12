@@ -14,3 +14,8 @@ WHERE len(list_distinct(r.artists)) = 1
   AND len(list_filter(coalesce(r.secondary, []), s -> s <> 'Soundtrack')) = 0
   AND yr(r.date) BETWEEN b.y0 - 5
                      AND coalesce(b.y_end_declared, getvariable('dump_year')) + 5;
+
+ALTER TABLE bands ADD COLUMN y_last_album INTEGER;
+UPDATE bands SET y_last_album = (
+  SELECT max(a.y) FROM albums a WHERE a.band_mbid = bands.mbid
+);
