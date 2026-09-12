@@ -1,4 +1,4 @@
-"""Enchaîne les fichiers SQL de transformation sur une connexion DuckDB."""
+"""Chains the transformation SQL files on a DuckDB connection."""
 
 from __future__ import annotations
 

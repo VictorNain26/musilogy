@@ -1,4 +1,4 @@
-"""Point d'entrée CLI : run, make-fixtures."""
+"""CLI entry point: run, make-fixtures."""
 
 from __future__ import annotations
 
@@ -60,8 +60,9 @@ WITNESSES = [
 
 
 def fetch_and_extract() -> None:
-    """§5.1 fetch → extract. Rejouable : fetch_dump ne retélécharge pas une
-    archive déjà vérifiée, extract réécrit sa sortie à chaque appel."""
+    """§5.1 fetch → extract. Replayable: fetch_dump does not re-download an
+    archive it has already verified, and extract rewrites its output on every
+    call."""
     artist_archive = fetch_dump(DUMP, "artist.tar.xz", RAW_DIR, SUMS_PATH)
     rg_archive = fetch_dump(DUMP, "release-group.tar.xz", RAW_DIR, SUMS_PATH)
     artists_kept, artists_dropped = extract(artist_archive, reduce_artist, ARTISTS_JSONL)
@@ -81,7 +82,7 @@ def fetch_and_extract() -> None:
 
 
 def run() -> None:
-    """Exécution complète : fetch → extract (si besoin) → transform → validate → publish."""
+    """Full execution: fetch → extract (when needed) → transform → validate → publish."""
     if not ARTISTS_JSONL.exists() or not RELEASE_GROUPS_JSONL.exists():
         fetch_and_extract()
 
@@ -97,7 +98,7 @@ def run() -> None:
 
 
 def make_fixtures() -> None:
-    """Extrait les enregistrements témoins des extractions complètes."""
+    """Extracts the witness records from the full extractions."""
     work = WORK_DIR
     out = FIXTURES_DIR
     out.mkdir(parents=True, exist_ok=True)

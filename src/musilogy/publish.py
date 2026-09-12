@@ -1,4 +1,4 @@
-"""Écrit les livrables : Parquet d'archive, JSON colonnaire pour le web, manifeste."""
+"""Writes the deliverables: archival Parquet, columnar JSON for the web, manifest."""
 
 from __future__ import annotations
 
