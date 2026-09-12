@@ -114,6 +114,22 @@ def _extraction(path: Path | None) -> dict[str, Any] | None:
     return recorded if isinstance(recorded, dict) else {"unreadable": True}
 
 
+def _extraction_matches_rows_loaded(
+    extraction: dict[str, Any] | None, rows_loaded: dict[str, int]
+) -> bool | None:
+    """None means "no record", never conflated with a mismatch: a sidecar
+    that is absent, unreadable, or missing a count says nothing, it does not
+    say the extraction was clean."""
+    if extraction is None or "unreadable" in extraction:
+        return None
+    if "artists_kept" not in extraction or "release_groups_kept" not in extraction:
+        return None
+    return bool(
+        extraction["artists_kept"] == rows_loaded["raw_artists"]
+        and extraction["release_groups_kept"] == rows_loaded["raw_release_groups"]
+    )
+
+
 PARAMETERS = ("dump_year", "min_year", "multi_artist_drop_limit", "min_candidate_credits")
 
 
@@ -189,19 +205,25 @@ def publish(
         if stale.name not in written:
             stale.unlink()
 
+    rows_loaded = {table: _count(con, table) for table in ("raw_artists", "raw_release_groups")}
+    extraction_record = _extraction(extraction)
+
     manifest = {
         "dump": dump,
         "archive_sha256": expected_sums(REFERENCE_DIR / f"{dump}.SHA256SUMS"),
         "counts": counts,
         "parameters": _parameters(con),
         "inputs": {
-            "rows_loaded": {
-                table: _count(con, table) for table in ("raw_artists", "raw_release_groups")
-            },
+            "rows_loaded": rows_loaded,
             # Read back rather than recomputed: these counts were taken while
             # the archive was being read, and comparing them to rows_loaded is
             # the only way a truncated extraction shows up at all.
-            "extraction": _extraction(extraction),
+            "extraction": extraction_record,
+            # The comparison itself, not left to a human subtracting two
+            # numbers in the manifest: see _extraction_matches_rows_loaded.
+            "extraction_matches_rows_loaded": _extraction_matches_rows_loaded(
+                extraction_record, rows_loaded
+            ),
         },
         "r2_anomalies": _counters(con, "r2_anomalies"),
         "neutralised_inferences": _counters(con, "neutralised_inferences"),

@@ -362,3 +362,47 @@ def test_manifest_survives_a_sidecar_truncated_mid_character(con, tmp_path):
 def test_manifest_says_so_when_the_extraction_path_does_not_exist(con, tmp_path):
     manifest = publish(con, tmp_path, DUMP, None, tmp_path / "missing-extraction.json")
     assert manifest["inputs"]["extraction"] is None
+
+
+def test_manifest_says_extraction_matches_rows_loaded_when_counts_agree(con, tmp_path):
+    # 28 artists and 3628 release-groups are what the fixtures actually load
+    # (test_manifest_counts_the_rows_that_fed_the_build): a sidecar claiming
+    # exactly those counts is the case the discrepancy check must let through.
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text(
+        json.dumps({"artists_kept": 28, "release_groups_kept": 3628}), encoding="utf-8"
+    )
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["inputs"]["extraction_matches_rows_loaded"] is True
+
+
+def test_manifest_says_extraction_does_not_match_rows_loaded_on_a_mismatch(con, tmp_path):
+    # A truncated extraction: fewer release-groups made it to disk than the
+    # extraction step reported keeping. The boolean must go False rather than
+    # leave a human to subtract the two numbers by hand.
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text(
+        json.dumps({"artists_kept": 28, "release_groups_kept": 3627}), encoding="utf-8"
+    )
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["inputs"]["extraction_matches_rows_loaded"] is False
+
+
+def test_manifest_extraction_match_is_none_without_a_sidecar(con, tmp_path):
+    # "No record" is not "mismatch": three states, not two.
+    manifest = publish(con, tmp_path, DUMP, None)
+    assert manifest["inputs"]["extraction_matches_rows_loaded"] is None
+
+
+def test_manifest_extraction_match_is_none_when_the_sidecar_is_unreadable(con, tmp_path):
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text('{"artists_kept": 7', encoding="utf-8")
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["inputs"]["extraction_matches_rows_loaded"] is None
+
+
+def test_manifest_extraction_match_is_none_when_a_count_key_is_missing(con, tmp_path):
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text(json.dumps({"artists_kept": 28}), encoding="utf-8")
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["inputs"]["extraction_matches_rows_loaded"] is None
