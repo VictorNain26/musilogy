@@ -27,27 +27,31 @@ WITNESSES = [
     "3cb86073-22d7-43d5-8f22-422b1e54988e",  # ROD
     "212faddb-cd09-4fbc-9336-3ed7cadfba68",  # Flesh Field
     "8a1f012c-acc1-4dda-878f-43ac02f2366f",  # Demented Are Go!
+    "62f7a211-0056-45fe-934a-37a388a7356f",  # The Belle Stars
+    "35ddcb29-4c16-4af6-b6f8-32143ee24a6c",  # Handel and Haydn Society
+    "d36b0fad-abd7-44e4-88fa-f638bbf8c9a6",  # Thunder Jolt
 ]
 
-work = Path("data/work")
-out = Path("pipeline/tests/fixtures")
-out.mkdir(parents=True, exist_ok=True)
-wanted = set(WITNESSES)
+if __name__ == "__main__":
+    work = Path("data/work")
+    out = Path("pipeline/tests/fixtures")
+    out.mkdir(parents=True, exist_ok=True)
+    wanted = set(WITNESSES)
 
-kept = []
-with open(out / "artists.jsonl", "w", encoding="utf-8") as fh:
-    for line in open(work / "artists.jsonl", encoding="utf-8"):
-        rec = json.loads(line)
-        if rec["mbid"] in wanted:
-            fh.write(line)
-            kept.append(rec["mbid"])
+    kept = []
+    with open(out / "artists.jsonl", "w", encoding="utf-8") as fh:
+        for line in open(work / "artists.jsonl", encoding="utf-8"):
+            rec = json.loads(line)
+            if rec["mbid"] in wanted:
+                fh.write(line)
+                kept.append(rec["mbid"])
 
-with open(out / "release_groups.jsonl", "w", encoding="utf-8") as fh:
-    for line in open(work / "release_groups.jsonl", encoding="utf-8"):
-        rec = json.loads(line)
-        if wanted & set(rec["artists"]):
-            fh.write(line)
+    with open(out / "release_groups.jsonl", "w", encoding="utf-8") as fh:
+        for line in open(work / "release_groups.jsonl", encoding="utf-8"):
+            rec = json.loads(line)
+            if wanted & set(rec["artists"]):
+                fh.write(line)
 
-print("témoins trouvés :", len(kept))
-missing = wanted - set(kept)
-print("manquants :", missing or "aucun")
+    print("témoins trouvés :", len(kept))
+    missing = wanted - set(kept)
+    print("manquants :", missing or "aucun")

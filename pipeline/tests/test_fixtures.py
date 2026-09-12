@@ -24,7 +24,7 @@ def test_release_groups_file_is_well_formed_and_complete():
     lines = open(FIX / "release_groups.jsonl", encoding="utf-8").readlines()
     records = [json.loads(line) for line in lines]
     # Nombre figé au moment de l'extraction : toute troncature ou ligne perdue le change.
-    assert len(records) == 3592
+    assert len(records) == 3613
 
 
 def test_every_release_group_credits_a_witness():
