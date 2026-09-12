@@ -86,6 +86,22 @@ def _count(con: duckdb.DuckDBPyConnection, table: str) -> int:
     return int(row[0])
 
 
+def _extraction(path: Path | None) -> dict[str, Any] | None:
+    """Three distinguishable states, because no record and a broken record are
+    not the same thing. The sidecar is an external file read at a boundary, and
+    the very failure it exists to reveal — a truncated extraction — is the one
+    that can leave it unparseable: a bare json.loads would take the whole
+    manifest down with it, losing the counts and the parameters, which have
+    nothing to do with the sidecar."""
+    if path is None or not path.exists():
+        return None
+    try:
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"unreadable": True}
+    return recorded if isinstance(recorded, dict) else {"unreadable": True}
+
+
 PARAMETERS = ("dump_year", "min_year", "multi_artist_drop_limit", "min_candidate_albums")
 
 
@@ -166,9 +182,7 @@ def publish(
             # Read back rather than recomputed: these counts were taken while
             # the archive was being read, and comparing them to rows_loaded is
             # the only way a truncated extraction shows up at all.
-            "extraction": json.loads(extraction.read_text(encoding="utf-8"))
-            if extraction is not None and extraction.exists()
-            else None,
+            "extraction": _extraction(extraction),
         },
         "r2_anomalies": _counters(con, "r2_anomalies"),
         "neutralised_inferences": _counters(con, "neutralised_inferences"),

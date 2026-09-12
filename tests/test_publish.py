@@ -315,3 +315,29 @@ def test_manifest_says_so_when_no_extraction_record_exists(con, tmp_path):
     # answer; an absent key would let a reader assume nothing was dropped.
     manifest = publish(con, tmp_path, DUMP, None)
     assert manifest["inputs"]["extraction"] is None
+
+
+def test_manifest_survives_a_truncated_extraction_record(con, tmp_path):
+    # A truncated sidecar is precisely the "full disk during extraction"
+    # scenario this task targets. A bare json.loads used to raise
+    # JSONDecodeError and take the whole manifest down with it: no counts, no
+    # parameters, even though those have nothing to do with the sidecar.
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text('{"artists_kept": 7', encoding="utf-8")
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["counts"]
+    assert manifest["inputs"]["extraction"] == {"unreadable": True}
+
+
+def test_manifest_survives_an_extraction_record_that_is_not_an_object(con, tmp_path):
+    # A JSON file whose top level is a list parses without error and would
+    # otherwise flow into the manifest as a shape no reader expects.
+    sidecar = tmp_path / "extraction.json"
+    sidecar.write_text("[1, 2, 3]", encoding="utf-8")
+    manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
+    assert manifest["inputs"]["extraction"] == {"unreadable": True}
+
+
+def test_manifest_says_so_when_the_extraction_path_does_not_exist(con, tmp_path):
+    manifest = publish(con, tmp_path, DUMP, None, tmp_path / "missing-extraction.json")
+    assert manifest["inputs"]["extraction"] is None
