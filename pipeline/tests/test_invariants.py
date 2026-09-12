@@ -36,6 +36,23 @@ def test_a_broken_invariant_is_reported(con):
     assert violations.get("album_without_band") == 1
 
 
+def test_album_without_band_survives_a_null_mbid_in_bands(con):
+    # NOT IN used to go silent here: a single NULL mbid in the `bands`
+    # subquery makes `x NOT IN (subquery)` never true, whatever x is, so a
+    # real violation would go unreported. NOT EXISTS is NULL-safe.
+    con.execute("INSERT INTO albums VALUES ('inconnu-null-poison', 'rg-null-poison', 'T', 1999, false)")
+    row = con.execute("SELECT * FROM bands LIMIT 1").fetchone()
+    cols = [d[0] for d in con.description]
+    values = list(row)
+    values[cols.index("mbid")] = None
+    placeholders = ", ".join("?" for _ in cols)
+    con.execute(f"INSERT INTO bands VALUES ({placeholders})", values)
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM albums WHERE band_mbid = 'inconnu-null-poison'")
+    con.execute("DELETE FROM bands WHERE mbid IS NULL")
+    assert violations.get("album_without_band") == 1
+
+
 def test_duplicate_band_is_reported(con):
     row = con.execute("SELECT * FROM bands LIMIT 1").fetchone()
     cols = [d[0] for d in con.description]
@@ -173,6 +190,24 @@ def test_unknown_genre_is_reported(con):
     )
     violations = dict(check_invariants(con, SQL))
     con.execute("UPDATE bands SET genres = ? WHERE mbid = ?", [original, mbid])
+    assert violations.get("unknown_genre") == 1
+
+
+def test_unknown_genre_survives_a_null_genre_mbid_in_the_vocabulary(con):
+    # Same NULL trap as album_without_band: a NULL genre_mbid in the
+    # `genres` subquery used to make NOT IN never true. Demonstrated in
+    # review on this exact invariant.
+    mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    original = con.execute("SELECT genres FROM bands WHERE mbid = ?", [mbid]).fetchone()[0]
+    con.execute(
+        "UPDATE bands SET genres = list_append(genres, "
+        "{'mbid': 'inconnu-null-poison', 'name': 'x', 'votes': 1}) WHERE mbid = ?",
+        [mbid],
+    )
+    con.execute("INSERT INTO genres VALUES (NULL, 'null-poison', 0)")
+    violations = dict(check_invariants(con, SQL))
+    con.execute("UPDATE bands SET genres = ? WHERE mbid = ?", [original, mbid])
+    con.execute("DELETE FROM genres WHERE genre_mbid IS NULL")
     assert violations.get("unknown_genre") == 1
 
 
@@ -316,3 +351,19 @@ def test_corrections_invalid_is_reported(con):
         "DELETE FROM corrections WHERE mbid = 'inconnu' OR field IN ('Begin', 'country')"
     )
     assert violations.get("corrections_invalid") == 3
+
+
+def test_corrections_invalid_survives_a_null_mbid_in_raw_artists(con):
+    # Same NULL trap as album_without_band and unknown_genre: a NULL mbid
+    # in the `raw_artists` subquery used to make NOT IN never true.
+    con.execute(
+        "INSERT INTO raw_artists VALUES "
+        "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
+    )
+    con.execute(
+        "INSERT INTO corrections VALUES ('inconnu-null-poison', 'begin', '2000', 'j', 's')"
+    )
+    violations = dict(check_invariants(con, SQL))
+    con.execute("DELETE FROM raw_artists WHERE mbid IS NULL")
+    con.execute("DELETE FROM corrections WHERE mbid = 'inconnu-null-poison'")
+    assert violations.get("corrections_invalid") == 1
