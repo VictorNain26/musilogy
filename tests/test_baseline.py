@@ -22,9 +22,9 @@ BASELINE = {
 # different things, and only the projection narrows.
 DENSITY_EXCLUSIONS = {"genres": 13, "band_genre_pairs": 1_554}
 # Witness measurements of the multi-artist bias, from both extremes: classical
-# loses almost all its candidate release-groups, alternative metal almost none.
-# A definition computed from `albums` instead of raw_release_groups, or one
-# that forgot to explode the credited artists, moves these.
+# loses almost all its candidate credits, alternative metal almost none. A
+# definition computed from `albums` instead of raw_release_groups, or one that
+# forgot to explode the credited artists, moves these.
 MULTI_ARTIST_DROP = {
     "classical": (27_199, 94.3),
     "orchestral": (3_771, 86.3),
