@@ -131,30 +131,32 @@ CREATE OR REPLACE VIEW density_population_mismatch AS
       AND t.g.mbid = d.genre_mbid
       AND d.year BETWEEN b.y0 AND b.y_presence_end
   );
--- §9.2. genre_parents references existing genres at both ends.
--- NOT EXISTS, not NOT IN: see album_without_band above, same NULL trap.
-CREATE OR REPLACE VIEW genre_parent_unknown_genre AS
-  SELECT genre_mbid FROM genre_parents gp
-  WHERE NOT EXISTS (SELECT 1 FROM genres g WHERE g.genre_mbid = gp.genre_mbid)
-  UNION
-  SELECT parent_mbid FROM genre_parents gp
-  WHERE NOT EXISTS (SELECT 1 FROM genres g WHERE g.genre_mbid = gp.parent_mbid);
--- §9.2. genre_parents has no cycle. The path walked by the recursive CTE
--- never revisits an already-visited node: its length is bounded by the
--- number of genres, so the query terminates whether the graph is cyclic or not.
-CREATE OR REPLACE VIEW genre_parent_cycle AS
-  WITH RECURSIVE walk(start_mbid, path, current_mbid, cycle) AS (
-    SELECT genre_mbid, [genre_mbid], parent_mbid, (genre_mbid = parent_mbid)
-    FROM genre_parents
-    UNION ALL
-    SELECT w.start_mbid,
-           list_append(w.path, w.current_mbid),
-           gp.parent_mbid,
-           list_contains(w.path, gp.parent_mbid) OR gp.parent_mbid = w.current_mbid
-    FROM walk w JOIN genre_parents gp ON gp.genre_mbid = w.current_mbid
-    WHERE NOT w.cycle
+-- 60_density.sql excludes the genres the multi-artist rule makes unreliable;
+-- none of them may keep a single density row. Recomputed from
+-- raw_release_groups and bands, never from genres.n_candidate_albums /
+-- genres.multi_artist_drop_pct: reading back the published measurement would
+-- compare it to itself and stay silent if the measurement itself were wrong.
+-- 50 and 200 hardcoded, like [1850, 2026] above and for the same reason —
+-- this view re-asserts the contractual rule instead of reading back the
+-- session variables the production rule depends on.
+CREATE OR REPLACE VIEW density_excluded_genre_present AS
+  WITH credits AS (
+    SELECT unnest(list_distinct(artists)) AS artist_mbid,
+           len(list_distinct(artists)) > 1 AS multi
+    FROM raw_release_groups
+    WHERE yr(date) BETWEEN 1850 AND 2026
+      AND len(list_filter(coalesce(secondary, []), s -> s NOT IN ('Soundtrack', 'Demo'))) = 0
+  ),
+  unreliable AS (
+    SELECT t.g.mbid AS genre_mbid
+    FROM credits c JOIN bands b ON b.mbid = c.artist_mbid,
+         UNNEST(b.genres) AS t(g)
+    GROUP BY t.g.mbid
+    HAVING count(*) >= 200
+       AND round(100.0 * sum(c.multi::INTEGER) / count(*), 1) >= 50
   )
-  SELECT DISTINCT start_mbid AS genre_mbid FROM walk WHERE cycle;
+  SELECT DISTINCT d.genre_mbid FROM density d
+  WHERE EXISTS (SELECT 1 FROM unreliable u WHERE u.genre_mbid = d.genre_mbid);
 -- 80_members.sql. The band side is a local reference and must resolve; the
 -- person side is deliberately not checked, it points outside this pipeline.
 -- NOT EXISTS, not NOT IN: see album_without_band above, same NULL trap.

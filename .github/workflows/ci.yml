@@ -29,7 +29,7 @@ jobs:
         run: uv run mypy
 
       # The slow suite (pytest -m slow) replays the pipeline against the real
-      # MusicBrainz/Wikidata dump: it needs the ~600 MB extractions under
+      # MusicBrainz dump: it needs the ~600 MB extractions under
       # data/work/, which are not versioned and take ~10 min to produce, so it
       # is not run here. The default addopts ("-m 'not slow'") skips it.
       - name: Test

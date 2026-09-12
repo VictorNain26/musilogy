@@ -2,21 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 import duckdb
-
-from musilogy.paths import REFERENCE_DIR
-
-logger = logging.getLogger(__name__)
-
-# Path resolved from this file, not from the process's cwd: the same
-# relative name is also hardcoded in 70_genre_parents.sql (read and
-# executed as-is by DuckDB), substituted below before execution so that
-# both occurrences point at the same source regardless of the caller's cwd.
-GENRE_PARENTS_CSV = REFERENCE_DIR / "20260912-wikidata-genre-parents.csv"
-GENRE_PARENTS_LITERAL = "musilogy/reference/20260912-wikidata-genre-parents.csv"
 
 RAW_ARTIST_COLUMNS = (
     "{mbid:'VARCHAR', name:'VARCHAR', type:'VARCHAR', begin:'VARCHAR', "
@@ -75,28 +63,23 @@ def build(
     corrections: Path | None,
     dump_year: int = 2026,
     min_year: int = 1850,
+    multi_artist_drop_limit: float = 50.0,
+    min_candidate_albums: int = 200,
 ) -> None:
     load_raw(con, artists, rgs)
     apply_corrections(con, corrections)
     con.execute(f"SET VARIABLE dump_year = {dump_year}")
     con.execute(f"SET VARIABLE min_year = {min_year}")
+    # The two bounds of density's exclusion rule (55_genre_reliability.sql,
+    # 60_density.sql) travel as session variables, like the calendar window:
+    # a rule that removes data must be readable and overridable from here,
+    # not buried in a literal inside the SQL that applies it.
+    con.execute(f"SET VARIABLE multi_artist_drop_limit = {multi_artist_drop_limit}")
+    con.execute(f"SET VARIABLE min_candidate_albums = {min_candidate_albums}")
     for path in sorted(sql_dir.glob("*.sql")):
         if path.name.startswith("90_"):
             continue
-        text = path.read_text(encoding="utf-8")
-        if path.name == "70_genre_parents.sql":
-            if not GENRE_PARENTS_CSV.exists():
-                logger.warning(
-                    "genre_parents source not found (%s): publishing an empty table",
-                    GENRE_PARENTS_CSV,
-                )
-                con.execute(
-                    "CREATE OR REPLACE TABLE genre_parents "
-                    "(genre_mbid VARCHAR, parent_mbid VARCHAR, source VARCHAR)"
-                )
-                continue
-            text = text.replace(GENRE_PARENTS_LITERAL, GENRE_PARENTS_CSV.as_posix())
-        con.execute(text)
+        con.execute(path.read_text(encoding="utf-8"))
 
 
 INVARIANTS = (
@@ -120,8 +103,7 @@ INVARIANTS = (
     "density_out_of_range",
     "density_above_band_count",
     "density_population_mismatch",
-    "genre_parent_unknown_genre",
-    "genre_parent_cycle",
+    "density_excluded_genre_present",
     "member_without_band",
     "member_without_person",
     "duplicate_member",

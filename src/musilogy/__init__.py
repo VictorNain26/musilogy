@@ -1,3 +1,3 @@
-"""Pipeline de reproduction des agrégats musicaux MusicBrainz/Wikidata."""
+"""Pipeline de reproduction des agrégats musicaux MusicBrainz."""
 
 REFERENCE_DUMP = "20260909-001002"

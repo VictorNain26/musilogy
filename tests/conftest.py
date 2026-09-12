@@ -28,6 +28,7 @@ def synthetic_artist(
     begin: str | None,
     end: str | None,
     members: list[dict[str, Any]] | None = None,
+    genres: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "mbid": mbid,
@@ -38,28 +39,81 @@ def synthetic_artist(
         "ended": end is not None,
         "country": None,
         "begin_area": None,
-        "genres": [],
+        "genres": genres or [],
         "members": members or [],
     }
 
 
 def synthetic_release_group(
-    mbid: str, artist: str, date: str, secondary: list[str] | None = None
+    mbid: str,
+    artist: str,
+    date: str,
+    secondary: list[str] | None = None,
+    co_artists: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "mbid": mbid,
         "title": mbid,
         "date": date,
         "secondary": secondary or [],
-        "artists": [artist],
+        "artists": [artist, *(co_artists or [])],
     }
 
 
-def build_synthetic(tmp_path, artists, release_groups=()):
+def build_synthetic(tmp_path, artists, release_groups=(), **build_kwargs):
     artists_path = tmp_path / "artists.jsonl"
     rgs_path = tmp_path / "release_groups.jsonl"
     artists_path.write_text("".join(json.dumps(a) + "\n" for a in artists), encoding="utf-8")
     rgs_path.write_text("".join(json.dumps(r) + "\n" for r in release_groups), encoding="utf-8")
     c = duckdb.connect(":memory:")
-    build(c, SQL, artists_path, rgs_path, None)
+    build(c, SQL, artists_path, rgs_path, None, **build_kwargs)
     return c
+
+
+def unreliable_genre_records():
+    """Four genres that differ only in what the multi-artist rule costs them:
+    `g-excluded` loses 250 candidate release-groups out of 250, `g-small` loses
+    10 out of 10 (over the rate, under the sample minimum), `g-clean` loses
+    none out of 250, `g-orphan` has no candidate at all. `guest` is credited on
+    the multi-artist release-groups and is deliberately absent from the artist
+    records: a co-credit does not have to be a band of this pipeline.
+
+    Shared by the reliability, invariant and manifest suites, which all need
+    the same scenario and must not each invent their own."""
+    artists = [
+        synthetic_artist(
+            "band-excluded",
+            "1990",
+            None,
+            genres=[{"mbid": "g-excluded", "name": "excluded", "votes": 3}],
+        ),
+        synthetic_artist(
+            "band-excluded-2",
+            "1995",
+            None,
+            genres=[{"mbid": "g-excluded", "name": "excluded", "votes": 3}],
+        ),
+        synthetic_artist(
+            "band-small", "1990", None, genres=[{"mbid": "g-small", "name": "small", "votes": 2}]
+        ),
+        synthetic_artist(
+            "band-clean", "1990", None, genres=[{"mbid": "g-clean", "name": "clean", "votes": 1}]
+        ),
+        synthetic_artist(
+            "band-orphan", "1990", None, genres=[{"mbid": "g-orphan", "name": "orphan", "votes": 1}]
+        ),
+    ]
+    release_groups = [
+        *(
+            synthetic_release_group(
+                f"rg-excluded-{i}", "band-excluded", "2000", co_artists=["guest"]
+            )
+            for i in range(250)
+        ),
+        *(
+            synthetic_release_group(f"rg-small-{i}", "band-small", "2000", co_artists=["guest"])
+            for i in range(10)
+        ),
+        *(synthetic_release_group(f"rg-clean-{i}", "band-clean", "2000") for i in range(250)),
+    ]
+    return artists, release_groups

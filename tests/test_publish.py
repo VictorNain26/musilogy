@@ -2,7 +2,7 @@ import gzip
 import json
 import subprocess
 
-from conftest import build_synthetic, synthetic_artist
+from conftest import build_synthetic, synthetic_artist, unreliable_genre_records
 
 from musilogy import REFERENCE_DUMP as DUMP
 from musilogy.fetch import expected_sums, sha256_file
@@ -18,10 +18,12 @@ def read_web(out_dir, name):
 
 def test_publish_writes_every_table(con, tmp_path):
     manifest = publish(con, tmp_path, DUMP, None)
-    for name in ("bands", "albums", "genres", "genre_parents", "density", "members"):
+    for name in ("bands", "albums", "genres", "density", "members"):
         assert (tmp_path / f"{name}.parquet").exists()
         assert name in manifest["counts"]
     assert manifest["dump"] == DUMP
+    assert "genre_parents" not in manifest["counts"]
+    assert not (tmp_path / "genre_parents.parquet").exists()
 
 
 def test_members_is_archived_but_stays_out_of_the_web_export(con, tmp_path):
@@ -128,6 +130,16 @@ def test_manifest_carries_the_three_neutralised_inference_counters(con, tmp_path
         "last_album_before_declared_begin": 1,
         "first_album_with_begin_below_min_year": 2,
     }
+
+
+def test_manifest_counts_what_the_density_exclusion_rule_removes(tmp_path):
+    # A rule that removes data must leave a visible trace. The two numbers
+    # differ on purpose (one genre, carried by two bands): a counter reporting
+    # the genre count in both slots would pass on a scenario where they match.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(tmp_path, artists, release_groups)
+    manifest = publish(c, tmp_path / "out", DUMP, None)
+    assert manifest["density_exclusions"] == {"genres": 1, "band_genre_pairs": 2}
 
 
 def test_manifest_carries_git_sha(con, tmp_path):

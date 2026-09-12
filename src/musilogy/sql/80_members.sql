@@ -2,9 +2,9 @@
 -- 80_ is the free slot after the table's only dependency (10_bands) and before
 -- 90_, reserved for the invariants: appending here renumbers nothing.
 --
--- person_mbid is an outward reference, like genre_parents.parent_mbid: this
--- pipeline extracts Group/Orchestra/Choir only, so the person it names is
--- never a local row and no invariant requires it to be one.
+-- person_mbid is an outward reference: this pipeline extracts
+-- Group/Orchestra/Choir only, so the person it names is never a local row and
+-- no invariant requires it to be one.
 --
 -- Years read with yr(), never a direct CAST: an illegible date ("????-01" on
 -- five relations of the reference dump) becomes NULL rather than a guess, the

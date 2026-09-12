@@ -2,7 +2,7 @@ from contextlib import contextmanager
 
 import duckdb
 import pytest
-from conftest import FIX, SQL
+from conftest import FIX, SQL, build_synthetic, unreliable_genre_records
 
 from musilogy.build import build, check_invariants
 
@@ -326,7 +326,12 @@ def test_unknown_genre_survives_a_null_genre_mbid_in_the_vocabulary(con):
             "{'mbid': 'inconnu-null-poison', 'name': 'x', 'votes': 1}) WHERE mbid = ?",
             [mbid],
         )
-        con.execute("INSERT INTO genres VALUES (NULL, 'null-poison', 0)")
+        # Named columns, not positional: this row exists to poison genre_mbid
+        # with a NULL, and it must not have to be rewritten every time the
+        # vocabulary gains a column it says nothing about.
+        con.execute(
+            "INSERT INTO genres (genre_mbid, name, n_bands) VALUES (NULL, 'null-poison', 0)"
+        )
         violations = dict(check_invariants(con, SQL))
     assert violations.get("unknown_genre") == 1
 
@@ -405,43 +410,31 @@ def test_density_above_band_count_catches_a_genre_absent_from_the_vocabulary(con
     assert violations.get("density_above_band_count") == 1
 
 
-def test_genre_parent_unknown_genre_is_reported(con):
-    with restored(con, ("DELETE FROM genre_parents WHERE genre_mbid = 'inconnu'", [])):
-        con.execute("INSERT INTO genre_parents VALUES ('inconnu', 'inconnu-parent', 'wikidata')")
-        violations = dict(check_invariants(con, SQL))
-    assert violations.get("genre_parent_unknown_genre") == 2
+def test_density_excluded_genre_present_is_reported(tmp_path):
+    # Own connection, own records: no witness genre reaches 200 candidate
+    # release-groups, so the shared fixtures cannot exercise this rule at all.
+    # The view recomputes the rule from raw_release_groups and bands; it must
+    # stay empty on a correct build and fire on a smuggled-in row.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(tmp_path, artists, release_groups)
+    assert check_invariants(c, SQL) == []
+
+    c.execute("INSERT INTO density VALUES ('g-excluded', 1990, 1)")
+    violations = dict(check_invariants(c, SQL))
+    assert violations.get("density_excluded_genre_present") == 1
 
 
-def test_genre_parent_unknown_genre_survives_a_null_genre_mbid_in_the_vocabulary(con):
-    # Same NULL trap as album_without_band and unknown_genre: a NULL
-    # genre_mbid in the `genres` subquery used to make NOT IN never true.
-    with restored(
-        con,
-        ("DELETE FROM genre_parents WHERE genre_mbid = 'inconnu-null-poison'", []),
-        ("DELETE FROM genres WHERE genre_mbid IS NULL", []),
-    ):
-        con.execute(
-            "INSERT INTO genre_parents VALUES "
-            "('inconnu-null-poison', 'inconnu-parent-null-poison', 'wikidata')"
-        )
-        con.execute("INSERT INTO genres VALUES (NULL, 'null-poison', 0)")
-        violations = dict(check_invariants(con, SQL))
-    assert violations.get("genre_parent_unknown_genre") == 2
-
-
-def test_genre_parent_cycle_is_reported(con):
-    with restored(
-        con,
-        ("DELETE FROM genre_parents WHERE genre_mbid IN ('cycle-a', 'cycle-b')", []),
-        ("DELETE FROM genres WHERE genre_mbid IN ('cycle-a', 'cycle-b')", []),
-    ):
-        con.execute("INSERT INTO genres VALUES ('cycle-a', 'A', 0), ('cycle-b', 'B', 0)")
-        con.execute(
-            "INSERT INTO genre_parents VALUES "
-            "('cycle-a', 'cycle-b', 'wikidata'), ('cycle-b', 'cycle-a', 'wikidata')"
-        )
-        violations = dict(check_invariants(con, SQL))
-    assert violations.get("genre_parent_cycle") == 2
+def test_density_excluded_genre_present_does_not_read_back_the_published_measurement(tmp_path):
+    # Wiping the published rate leaves the raw evidence untouched, so the
+    # invariant must still fire: an implementation that filtered on
+    # genres.multi_artist_drop_pct would go silent here — exactly the failure
+    # that once let 265 real violations through.
+    artists, release_groups = unreliable_genre_records()
+    c = build_synthetic(tmp_path, artists, release_groups)
+    c.execute("INSERT INTO density VALUES ('g-excluded', 1990, 1)")
+    c.execute("UPDATE genres SET multi_artist_drop_pct = 0, n_candidate_albums = 0")
+    violations = dict(check_invariants(c, SQL))
+    assert violations.get("density_excluded_genre_present") == 1
 
 
 def test_density_above_band_count_is_reported(con):

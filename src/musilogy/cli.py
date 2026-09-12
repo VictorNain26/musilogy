@@ -1,4 +1,4 @@
-"""Point d'entrée CLI : run, make-fixtures, check-genre-parents."""
+"""Point d'entrée CLI : run, make-fixtures."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import duckdb
 from musilogy import REFERENCE_DUMP as DUMP
 from musilogy.build import build, check_invariants
 from musilogy.extract import extract, reduce_artist, reduce_release_group
-from musilogy.fetch import fetch_dump, sha256_file
+from musilogy.fetch import fetch_dump
 from musilogy.paths import CORRECTIONS_CSV, REFERENCE_DIR, SQL_DIR
 from musilogy.publish import publish
 
@@ -110,31 +110,17 @@ def make_fixtures() -> None:
     print("missing:", missing or "none")
 
 
-def check_genre_parents() -> None:
-    """Vérifie l'archive Wikidata contre son empreinte. Aucun appel réseau."""
-    csv = REFERENCE_DIR / "20260912-wikidata-genre-parents.csv"
-    expected = Path(str(csv) + ".sha256").read_text(encoding="utf-8").split()[0]
-    actual = sha256_file(csv)
-    assert actual == expected, f"tampered archive: {actual} != {expected}"
-    with csv.open(encoding="utf-8") as fh:
-        n_lines = sum(1 for _ in fh)
-    print(csv, n_lines, "lines")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(prog="musilogy")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("run", help="fetch → extract → transform → validate → publish")
     subparsers.add_parser("make-fixtures", help="extract witness records for the test fixtures")
-    subparsers.add_parser("check-genre-parents", help="verify the Wikidata archive checksum")
 
     args = parser.parse_args()
     if args.command == "run":
         run()
     elif args.command == "make-fixtures":
         make_fixtures()
-    elif args.command == "check-genre-parents":
-        check_genre_parents()
 
 
 if __name__ == "__main__":

@@ -14,13 +14,30 @@ BASELINE = {
     "bands": 682_447,
     "albums": 643_403,
     "genres": 1_348,
-    "density": 53_029,
+    "density": 52_201,
     "members": 601_759,
+}
+# What the density exclusion rule (55_genre_reliability.sql) costs: 13 genres,
+# 1 554 (band, genre) pairs, 828 cells and 10 504 band-years. bands, albums,
+# genres and members keep every one of them — population and projection are
+# different things, and only the projection narrows.
+DENSITY_EXCLUSIONS = {"genres": 13, "band_genre_pairs": 1_554}
+# Witness measurements of the multi-artist bias, from both extremes: classical
+# loses almost all its candidate release-groups, alternative metal almost none.
+# A definition computed from `albums` instead of raw_release_groups, or one
+# that forgot to explode the credited artists, moves these.
+MULTI_ARTIST_DROP = {
+    "classical": (27_199, 94.3),
+    "orchestral": (3_771, 86.3),
+    "string quartet": (2_866, 83.3),
+    "jazz": (13_410, 13.4),
+    "rock": (37_870, 1.8),
+    "alternative metal": (3_006, 0.6),
 }
 Y0_SOURCE_BREAKDOWN = {"declared": 235_246, "first_album": 145_620, None: 301_581}
 Y_END_SOURCE_BREAKDOWN = {"declared": 48_842, "last_album": 251_514, None: 382_091}
 PLACEABLE = 380_866
-DENSITY_PRESENT = 1_983_329
+DENSITY_PRESENT = 1_972_825
 # The date readings the dump loses, and the album inferences the guards of
 # 30_bands_lifespan.sql refuse. Frozen here too: a guard that stops firing is
 # as much a regression as a count that moves.
@@ -82,6 +99,25 @@ def test_reference_dump_matches_the_baseline():
 
     assert single_row(con, "r2_anomalies") == DATE_ANOMALIES
     assert single_row(con, "neutralised_inferences") == NEUTRALISED_INFERENCES
+    assert single_row(con, "density_exclusions") == DENSITY_EXCLUSIONS
+
+    for name, expected_measure in MULTI_ARTIST_DROP.items():
+        row = con.execute(
+            "SELECT n_candidate_albums, multi_artist_drop_pct FROM genres WHERE name = ?", [name]
+        ).fetchone()
+        assert row == expected_measure, f"{name}: expected {expected_measure}, got {row}"
+
+    # The rule empties the projection, never the vocabulary: not one excluded
+    # genre keeps a density row, and `classical` is still a genre.
+    row = con.execute(
+        "SELECT count(DISTINCT d.genre_mbid) FROM density d JOIN genres g USING (genre_mbid) "
+        "WHERE g.multi_artist_drop_pct >= 50 AND g.n_candidate_albums >= 200"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == 0
+    row = con.execute("SELECT count(*) FROM genres WHERE name = 'classical'").fetchone()
+    assert row is not None
+    assert row[0] == 1
 
     row = con.execute(
         "SELECT count(*) FROM bands WHERE y_end IS NOT NULL AND y0 IS NOT NULL AND y_end < y0"
