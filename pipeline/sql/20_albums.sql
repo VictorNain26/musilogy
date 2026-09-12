@@ -5,7 +5,7 @@ SELECT
   r.mbid AS rg_mbid,
   r.title,
   yr(r.date) AS y,
-  len(coalesce(r.secondary, [])) = 1 AS soundtrack
+  list_contains(coalesce(r.secondary, []), 'Soundtrack') AS soundtrack
 FROM raw_release_groups r
 JOIN bands b ON b.mbid = list_distinct(r.artists)[1]
 WHERE len(list_distinct(r.artists)) = 1

@@ -152,6 +152,8 @@ Un release-group est retenu comme album d'un groupe si et seulement si :
 4. ses types secondaires sont **vides ou exactement `{Soundtrack}`** ;
 5. son année est dans `[y0 − 5, borne_haute + 5]`, où `borne_haute = y_end_declared` si elle existe, sinon l'année du dump.
 
+La condition 1 est appliquée à l'extraction (`pipeline/extract.py::reduce_release_group`), pas dans le SQL de cette règle : le champ `primary-type` n'est même pas transporté jusqu'à `raw_release_groups`, par choix de volume assumé pour ne pas conserver en mémoire ou sur disque des dizaines de millions de release-groups non-Album. Conséquence à connaître : si ce filtre d'extraction s'assouplissait un jour, aucune couche en aval ne rattraperait les non-albums qui s'y glisseraient.
+
 Effets mesurés :
 
 - 2 317 879 albums dans la base, dont 94,7 % datés.

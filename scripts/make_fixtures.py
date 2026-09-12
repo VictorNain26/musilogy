@@ -30,6 +30,7 @@ WITNESSES = [
     "62f7a211-0056-45fe-934a-37a388a7356f",  # The Belle Stars
     "35ddcb29-4c16-4af6-b6f8-32143ee24a6c",  # Handel and Haydn Society
     "d36b0fad-abd7-44e4-88fa-f638bbf8c9a6",  # Thunder Jolt
+    "03c2e506-e8bb-4bd6-9693-5aa97c8eea1c",  # Inspiral Carpets
 ]
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ FLEETWOOD = "bd13909f-1c29-4c27-a874-d4aaf27c5b1a"
 DEMENTED = "8a1f012c-acc1-4dda-878f-43ac02f2366f"
 CARDIACS = "f7338f2a-136b-4d5e-b099-5504cf997f58"
 MAROON = "0ab49580-c84f-44d4-875f-d83760ea2cfe"
+BIGGEST_THING_SINCE_COLOSSUS = "51c70552-4906-3b27-b3f4-f64e764551d0"
+BURN_LIKE_THE_SUN = "ccb65ca4-2d61-4667-8738-c35cf8183334"
 
 
 @pytest.fixture(scope="module")
@@ -34,8 +36,8 @@ def test_soundtracks_are_kept(con):
 
 def test_multi_artist_album_is_dropped(con):
     assert con.execute(
-        "SELECT count(*) FROM albums WHERE rg_mbid IN "
-        "(SELECT mbid FROM raw_release_groups WHERE title = 'The Biggest Thing Since Colossus')"
+        "SELECT count(*) FROM albums WHERE band_mbid = ? AND rg_mbid = ?",
+        [FLEETWOOD, BIGGEST_THING_SINCE_COLOSSUS],
     ).fetchall() == [(0,)]
 
 
@@ -56,3 +58,12 @@ def test_album_before_formation_is_kept_within_five_years(con):
     assert con.execute(
         "SELECT min(y) FROM albums WHERE band_mbid = ?", [MAROON]
     ).fetchall() == [(1997,)]
+
+
+def test_future_dated_release_group_is_dropped(con):
+    # Burn Like The Sun (Inspiral Carpets), datée 2027-01-29 : formé en 1989,
+    # sans fin déclarée, la fenêtre R3.5 monte jusqu'à 2031 (2026 + 5). Seule
+    # la clause R3.3 (année <= année du dump) écarte ce témoin.
+    assert con.execute(
+        "SELECT count(*) FROM albums WHERE rg_mbid = ?", [BURN_LIKE_THE_SUN]
+    ).fetchall() == [(0,)]
