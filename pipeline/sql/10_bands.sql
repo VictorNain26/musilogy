@@ -1,7 +1,7 @@
--- R1 population, R2 dates. dump_year est fourni par build() via SET VARIABLE.
--- Les cinq colonnes booléennes portent les sous-règles R2 : elles ne
--- décident rien de plus que y0/y_end_declared, elles nomment la même
--- décision pour que publish.py puisse la compter sans la recalculer.
+-- R1 population, R2 dates. dump_year is provided by build() via SET VARIABLE.
+-- The five boolean columns carry the R2 sub-rules: they decide nothing
+-- beyond y0/y_end_declared, they just name the same decision so that
+-- publish.py can count it without recomputing it.
 CREATE OR REPLACE TABLE dated AS
 SELECT
   mbid, name, type, ended, country, begin_area, genres, members,
@@ -18,9 +18,9 @@ SELECT
     AND yr("end") < yr(begin) AS end_before_begin
 FROM raw_artists;
 
--- Compteurs R2 pour manifest.json (§5.3) : population = raw_artists, soit
--- tous les groupes/orchestres/chœurs extraits, pas seulement `bands` après
--- R1 — un groupe sans genre avec une fin illisible doit rester visible ici.
+-- R2 counters for manifest.json (§5.3): population = raw_artists, i.e.
+-- every group/orchestra/choir extracted, not just `bands` after R1 — a
+-- group without a genre but with an illegible end must still be visible here.
 CREATE OR REPLACE TABLE r2_anomalies AS
 SELECT
   sum(begin_illegible::INTEGER) AS begin_illegible,
@@ -32,15 +32,15 @@ FROM dated;
 
 CREATE OR REPLACE TABLE bands AS
 SELECT mbid, name, y0, y_end_declared, ended, country, begin_area,
-  -- R5. Tri posé (votes décroissants puis nom), jamais hérité de la source
-  -- (alphabétique). list_sort n'accepte pas de comparateur lambda en 1.5.5 :
-  -- on trie par clé en projetant chaque genre sur {k: [-votes], n: name, v:
-  -- genre}, list_sort comparant les structs champ par champ.
+  -- R5. Explicit sort (votes descending, then name), never inherited from
+  -- the source (alphabetical). list_sort does not accept a lambda comparator
+  -- in 1.5.5: sort by key, projecting each genre onto {k: [-votes], n: name,
+  -- v: genre}, list_sort compares structs field by field.
   list_transform(
     list_sort(list_transform(genres, x -> {'k': [-x.votes::INT], 'n': x.name, 'v': x})),
     y -> y.v
   ) AS genres
 FROM dated
 WHERE type = 'Group'
-  AND y0 BETWEEN 1850 AND getvariable('dump_year')
+  AND y0 BETWEEN getvariable('min_year') AND getvariable('dump_year')
   AND len(genres) > 0;

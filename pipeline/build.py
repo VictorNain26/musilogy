@@ -8,10 +8,10 @@ import duckdb
 
 logger = logging.getLogger(__name__)
 
-# Chemin résolu depuis ce fichier, pas depuis le cwd du process : le même
-# nom relatif est aussi codé en dur dans 60_genre_parents.sql (lu et exécuté
-# tel quel par DuckDB), substitué ci-dessous avant exécution pour que les
-# deux occurrences pointent la même source, quel que soit le cwd d'appel.
+# Path resolved from this file, not from the process's cwd: the same
+# relative name is also hardcoded in 60_genre_parents.sql (read and
+# executed as-is by DuckDB), substituted below before execution so that
+# both occurrences point at the same source regardless of the caller's cwd.
 GENRE_PARENTS_CSV = (
     Path(__file__).resolve().parent / "reference" / "20260912-wikidata-genre-parents.csv"
 )
@@ -44,9 +44,9 @@ def load_raw(con: duckdb.DuckDBPyConnection, artists: Path, rgs: Path) -> None:
 
 def apply_corrections(con: duckdb.DuckDBPyConnection, corrections: Path | None) -> int:
     if corrections is None:
-        # Toujours matérialisée, même vide : la suite rapide (§9.3) construit
-        # les fixtures avec corrections=None, et l'invariant
-        # corrections_file_too_large lit cette table sans dépendre du dump.
+        # Always materialized, even empty: the fast suite (§9.3) builds
+        # fixtures with corrections=None, and the corrections_file_too_large
+        # invariant reads this table without depending on the dump.
         con.execute(
             "CREATE OR REPLACE TABLE corrections (mbid VARCHAR, field VARCHAR, "
             "value VARCHAR, justification VARCHAR, source VARCHAR)"
@@ -73,10 +73,12 @@ def build(
     rgs: Path,
     corrections: Path | None,
     dump_year: int = 2026,
+    min_year: int = 1850,
 ) -> None:
     load_raw(con, artists, rgs)
     apply_corrections(con, corrections)
     con.execute(f"SET VARIABLE dump_year = {dump_year}")
+    con.execute(f"SET VARIABLE min_year = {min_year}")
     for path in sorted(sql_dir.glob("*.sql")):
         if path.name.startswith("90_"):
             continue
@@ -84,7 +86,7 @@ def build(
         if path.name == "60_genre_parents.sql":
             if not GENRE_PARENTS_CSV.exists():
                 logger.warning(
-                    "source genre_parents introuvable (%s) : table publiée vide",
+                    "genre_parents source not found (%s): publishing an empty table",
                     GENRE_PARENTS_CSV,
                 )
                 con.execute(
