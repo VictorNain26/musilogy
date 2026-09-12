@@ -4,7 +4,11 @@ Couche 0 : transforme deux dumps JSON MusicBrainz en cinq tables reproductibles 
 
 ## Principe directeur
 
-**La sortie n'affirme jamais plus que ce que la source porte.** Une absence reste une absence : elle n'est ni imputée, ni prolongée, ni arbitrée en silence. C'est la raison derrière la plupart des choix ci-dessous — en particulier le refus de calculer une date de fin de groupe (R4) et le fait que R2 neutralise une date illisible plutôt que de la deviner.
+**La sortie n'affirme jamais plus que ce que la source porte.** Une absence reste une absence : elle n'est ni imputée en silence, ni prolongée, ni arbitrée. Quand une valeur est dérivée, elle est publiée avec la colonne qui dit d'où elle vient, pour que le consommateur distingue une donnée déclarée d'une donnée inférée.
+
+**Population et projection sont deux choses distinctes.** `bands` et `albums` portent la population complète ; `density` est une projection délibérément plus étroite, destinée à la frise. Un filtre d'affichage vit dans la projection, jamais dans la population — sinon la donnée écartée devient irrécupérable en aval.
+
+C'est le changement le plus lourd par rapport à la première version de ce dépôt, qui appliquait le filtre de la frise à la population et n'en publiait que 63 487 groupes sur 682 447, soit 30 % de la masse d'albums réelle.
 
 ## Les cinq tables
 
@@ -12,50 +16,97 @@ Mesurées sur le dump de référence `20260909-001002` :
 
 | Table | Contenu | Lignes |
 |---|---|---|
-| `bands` | un groupe : ses preuves de dates, ses genres votés, sa provenance | 63 487 |
-| `albums` | un point : une sortie d'album studio d'un groupe | 189 477 |
-| `genres` | le vocabulaire effectivement porté par `bands` | 1 236 |
-| `genre_parents` | relations parent-enfant assertées entre genres (Wikidata) | 1 195 arêtes, 951 genres couverts sur 1 236 |
-| `density` | groupes présents par genre et par année | 51 161 cellules |
+| `bands` | un artiste : ses preuves de dates, sa ligne de vie dérivée, ses genres votés | 682 447 |
+| `albums` | un point : une sortie d'album créditée à un seul artiste | 643 403 |
+| `genres` | le vocabulaire porté par `bands` | 1 348 |
+| `genre_parents` | relations parent-enfant assertées entre genres (Wikidata) | 1 283 arêtes |
+| `density` | groupes présents par genre et par année | 53 029 cellules |
 
-Colonnes réelles (voir `pipeline/sql/`) :
+Colonnes réelles (voir `src/musilogy/sql/`) :
 
-- **`bands`** : `mbid`, `name`, `y0`, `y_end_declared`, `ended`, `country`, `begin_area`, `genres` (liste de `{mbid, name, votes}`, triée), `y_last_album`, `y_presence_end`.
+- **`bands`** : `mbid`, `name`, `type`, `y0_declared`, `y_end_declared`, `ended`, `country`, `begin_area`, `genres` (liste de `{mbid, name, votes}`, triée), `y_first_album`, `y_last_album`, `y0`, `y0_source`, `y_end`, `y_end_source`, `y_presence_end`.
 - **`albums`** : `band_mbid`, `rg_mbid`, `title`, `y`, `soundtrack`.
 - **`genres`** : `genre_mbid`, `name`, `n_bands`.
-- **`genre_parents`** : `genre_mbid`, `parent_mbid`, `source` (`wikidata` ou `musicbrainz`).
+- **`genre_parents`** : `genre_mbid`, `parent_mbid`, `source`.
 - **`density`** : `genre_mbid`, `year`, `present`.
 
-Une table intermédiaire, `presence(mbid, y0, y_presence_end)`, est calculée mais non publiée — c'est elle qui porte les invariants de présence.
+Une table intermédiaire, `presence(mbid, y0, y_presence_end)`, est calculée mais non publiée.
 
 ## Les règles
 
-Chaque règle vit dans son fichier SQL numéroté (`pipeline/sql/`) ; la numérotation est un ordre topologique, pas une liste — R6 précède R2, qui précède R1, dont dépendent R3 et R5, dont dépend R7.
+Chaque règle vit dans son fichier SQL numéroté (`src/musilogy/sql/`) ; **la numérotation est un ordre topologique de dépendance**, pas un rang dans une liste, et avance par pas de dix pour qu'une règle s'insère sans renumérotation.
 
-- **R1 — Population.** Un artiste entre dans `bands` s'il est de type `Group`, a une année de formation valide dans `[1850, année du dump]`, et porte au moins un genre. Les orchestres et chœurs sont exclus malgré un genre, faute d'un modèle de ligne de vie comparable. La plus grosse exclusion — et la plus structurante — est l'absence de genre : sur 229 241 groupes datés, 72,3 % sont écartés faute de genre.
-- **R2 — Dates.** Lecture déterministe, sans intervention humaine : l'année tient sur les quatre premiers caractères ; sinon, ou si elle est future, ou si la fin précède le début, la date est **absente**, pas devinée. Chaque sous-règle alimente un compteur dans `manifest.json` pour qu'une anomalie neutralisée reste visible plutôt qu'absorbée en silence.
-- **R3 — Albums.** Un release-group compte comme album s'il est de type primaire `Album` (filtré dès l'extraction, `pipeline/extract.py`), crédité à un seul artiste distinct présent dans `bands`, daté au plus tard que l'année du dump, sans type secondaire hors `Soundtrack`, et dans la fenêtre `[y0 − 5, borne_haute + 5]`. Les albums à plusieurs artistes distincts sont exclus.
-- **R4 — Bord droit.** La couche 0 ne calcule **jamais** de date de fin de groupe. Elle transporte trois preuves indépendantes — `y_end_declared`, `y_last_album`, `ended` — et laisse le rendu de l'incertitude à la couche 1.
-- **R5 — Genres.** Tous les genres d'un groupe sont conservés, triés explicitement par votes décroissants puis par nom (l'ordre de la source est alphabétique, jamais hérité). Aucun plafond en couche 0.
-- **R6 — Corrections manuelles.** `pipeline/corrections.csv`, versionné, colonnes `mbid, field, value, justification, source` : chaque ligne cite une source vérifiable. Appliqué avant R2, sur `raw_artists`. Le pipeline ne dépend jamais de ce fichier pour fonctionner — R2 neutralise déjà toute anomalie — et un garde-fou échoue au-delà de 50 lignes.
-- **R7 — Présence et densité.** Un groupe est présent l'année `y` si `y0 ≤ y ≤ fin_de_présence`, où `fin_de_présence` est la fin déclarée si elle existe, sinon `max(y0, y_last_album)`, plafonnée à l'année du dump. `density` compte, par genre et par année, les groupes présents portant ce genre ; un groupe à plusieurs genres compte dans chacun.
+- **`10_bands` — Population et lecture des dates.** Tout artiste extrait entre dans `bands` : aucun filtre de type, de date ou de genre. La lecture des dates est déterministe : l'année tient sur les quatre premiers caractères, sinon elle est **absente**, pas devinée. Une date hors de `[1850, année du dump]` — aux deux bords — et une fin antérieure au début sont neutralisées, et **chaque neutralisation alimente un compteur** dans `manifest.json` pour rester visible plutôt qu'absorbée en silence. Tous les genres sont conservés, triés explicitement par votes décroissants puis par nom (l'ordre de la source est alphabétique, jamais hérité).
 
-## Chiffres de référence (contrat de non-régression)
+- **`20_albums` — Albums.** Un release-group compte comme album s'il est de type primaire `Album` (filtré dès l'extraction), crédité à un **seul artiste distinct** présent dans `bands`, daté dans `[1850, année du dump]`, et dont les types secondaires sont vides ou inclus dans `{Soundtrack, Demo}`. La fenêtre de ±5 ans autour de la formation a disparu : `y0` dérive désormais en partie des albums, l'utiliser ici créerait un cycle.
 
-Sur le dump `20260909-001002`, corrections vides :
+  Les démos sont acceptées parce qu'elles sont une preuve *contemporaine* d'activité précoce : 67,5 % des groupes ayant démo et album studio ont sorti la démo d'abord, 3 ans plus tôt en médiane. Les albums live sont exclus pour la raison inverse : **MusicBrainz les date de leur publication, pas du concert** — 727 groupes ont un live daté plus de 20 ans après leur dernier studio, avec des titres qui portent eux-mêmes la vraie date (« Live in Paris (1966) », publié en 2024). Les compilations, DJ-mix et remix sont exclus au même titre.
 
-- `bands` : 63 487 · `albums` : 189 477 · `genres` : 1 236 · `density` : 51 161 cellules.
-- Anomalies R2 (sur les 682 447 groupes/orchestres/chœurs) : 34 formations illisibles, 7 fins illisibles, 15 formations futures, 3 fins futures, 2 fins antérieures au début.
-- `genre_parents` : 1 195 arêtes couvrant 951 genres sur 1 236.
+- **`30_bands_lifespan` — Ligne de vie et provenance.** Aux deux bords, **la preuve déclarée l'emporte, l'album prend le relais** :
+  - `y0` = année déclarée, sinon année du premier album ; `y0_source` vaut `declared`, `first_album` ou NULL.
+  - `y_end` = fin déclarée, sinon année du dernier album ; `y_end_source` suit la même logique.
+  - Les preuves brutes (`y0_declared`, `y_end_declared`, `y_first_album`, `y_last_album`, `ended`) restent publiées à côté : la valeur dérivée est vérifiable sans relancer le pipeline.
 
-Ces chiffres sont vérifiés par `uv run pytest -m slow` (voir plus bas) ; un écart signale une règle mal implémentée, jamais un prétexte pour ajuster la ligne de base.
+  **Une preuve issue d'un album n'est retenue à un bord que si elle ne contredit pas la preuve déclarée à l'autre bord.** Trois garde-fous symétriques, chacun avec son compteur :
+
+  | garde-fou | cas | compte |
+  |---|---|---|
+  | `first_album_after_declared_end` | premier album postérieur à une fin déclarée — une réédition posthume, dont la `first-release-date` est la date de réédition, n'est pas une preuve de formation | 81 |
+  | `last_album_before_declared_begin` | dernier album antérieur à un début déclaré — symétrique du précédent, il produisait une fin étiquetée `last_album` qui valait en réalité l'année de début | 271 |
+  | `first_album_with_begin_below_min_year` | début déclaré sous 1850, donc neutralisé : la source affirme que le groupe précède l'album, en inférer une formation plus tardive affirmerait davantage qu'elle | 73 |
+
+  Après ces garde-fous, `y_end >= y0` est garanti par construction, sans clause défensive.
+
+- **`40_presence` — Présence.** Seuls les artistes dont `y0` est connu. `y_presence_end` borne `y_end` à l'année du dump.
+
+- **`50_genres` — Vocabulaire.** Les genres effectivement portés par `bands`, avec leur nombre d'artistes.
+
+- **`60_density` — Densité.** Délibérément plus étroite que la population : type `Group`, `y0` connu, au moins un genre. Un artiste sans genre n'y produit aucune ligne par construction. Les totaux par genre ne s'additionnent pas : un groupe compte dans chacun des siens.
+
+- **`70_genre_parents` — Arbre des genres.** Depuis une archive Wikidata datée et vérifiée par empreinte, restreinte aux genres présents aux deux extrémités.
+
+- **`90_invariants` — Contrôles.** 24 vues qui doivent toutes renvoyer zéro ligne ; le nom de la vue *est* le nom de l'invariant. Chacune **recalcule indépendamment** ce qu'elle vérifie : réutiliser la formule de production reviendrait à comparer une valeur à elle-même, et une revue a montré qu'un invariant écrit ainsi restait muet sur 265 violations réelles. Les bornes contractuelles y sont codées en dur, aux deux extrémités, sans relire les variables de session dont dépendent les règles de production ; changer de dump impose donc une modification délibérée de ce fichier — c'est précisément l'intention.
+
+Les corrections manuelles (`src/musilogy/corrections.csv`, versionné, colonnes `mbid, field, value, justification, source`) sont appliquées avant la lecture des dates ; chaque ligne cite une source vérifiable. Le pipeline ne dépend jamais de ce fichier pour fonctionner, et un garde-fou échoue au-delà de 50 lignes.
+
+## Ce que reçoit la couche 1
+
+`data/out/<dump>/` contient les cinq tables en Parquet (archive complète), le manifeste, et un export JSON colonnaire gzippé **scindé** :
+
+- `web/bands_timeline.json.gz` — les 380 866 artistes dont `y0` est connu, donc plaçables sur une frise ;
+- `web/bands_rest.json.gz` — les 301 581 autres, chargeables à la demande ;
+- `web/genres.json.gz` — le vocabulaire.
+
+Chaque ligne porte son `mbid` (clé de jointure vers `density`, `genre_parents` et MusicBrainz), ses `genres`, et les deux bords avec leurs preuves brutes des deux côtés, pour que la provenance soit auditable à gauche comme à droite.
+
+**Le poids reste un sujet ouvert pour la couche 1** : 15,6 Mo gzip pour la frise, 9,4 Mo pour le reste. La cause n'est pas les genres (1,7 Mo) mais les identifiants eux-mêmes — 380 866 UUID de 36 octets ne se compressent pas. Un chargement initial complet n'est pas réaliste sur mobile ; il faudra un découpage par genre ou par période côté couche 1, ce que la couche 0 ne préempte pas.
+
+`manifest.json` porte les empreintes des archives, les comptes, les anomalies de lecture de dates, les trois compteurs de neutralisation, le commit et l'empreinte des corrections.
+
+## Chiffres de référence
+
+Le **contrat exécutable** est `tests/test_baseline.py` : il confronte le pipeline entier au dump de référence et compare exactement les comptes, la somme des cellules de densité, la répartition des provenances, et l'absence de fin antérieure au début. Les chiffres cités dans ce README sont descriptifs ; en cas de divergence, c'est le test qui fait foi.
+
+Un écart à la ligne de base signale une règle mal implémentée — jamais un prétexte pour ajuster la ligne de base.
+
+Provenance des bords, sur le dump de référence :
+
+| | `declared` | dérivé des albums | inconnu |
+|---|---|---|---|
+| début (`y0_source`) | 235 246 | 145 620 | 301 581 |
+| fin (`y_end_source`) | 48 842 | 251 514 | 382 091 |
 
 ## Limites assumées
 
-- **72,3 % des groupes datés sont écartés faute de genre** — le choix le plus lourd de la couche 0. Un groupe sans genre n'a pas de place sur une frise filtrable par genre, mais c'est un filtre de notoriété communautaire, pas une mesure objective.
-- **Les albums crédités à plusieurs artistes distincts sont exclus**, avec un biais non uniforme selon les genres : 19,7 % des albums écartés en grindcore contre 8,4 % en ambient. `density` n'est donc **pas** rigoureusement comparable d'un genre à l'autre.
-- **Près du présent, la densité est une borne basse** : un groupe non terminé sans fin déclarée n'est compté présent que jusqu'à son dernier album connu, jamais prolongé jusqu'à aujourd'hui.
-- **L'arbre des genres vient de Wikidata seule** et couvre 951 genres sur 1 236 ; la piste MusicBrainz (`subgenre`) reste non tranchée faute de mesure aboutie.
+- **Le classique est inexploitable en densité.** L'exclusion des albums crédités à plusieurs artistes distincts retire 9,6 % des albums en moyenne, mais le biais est extrême et non uniforme : **94,3 % en `classical`**, 86,3 % en `orchestral`, contre 0,6 % en `alternative metal` et 0,8 % en `power metal`. Un album classique crédite presque toujours compositeur *et* interprète. `density` n'est donc pas comparable d'un genre à l'autre, et ne veut pratiquement rien dire pour les répertoires savants.
+
+- **Une fin dérivée d'un album n'est pas une fin déclarée.** Elle est marquée `y_end_source = 'last_album'`. Parmi les groupes dont la fin est inférée ainsi et qui ont au moins deux albums, **3,38 % ont un dernier album isolé de plus de 15 ans** du précédent (1,04 % au-delà de 25 ans) : des rééditions de fonds historiques qui étirent la ligne de vie. La couche 0 ne les écarte pas — il faudrait un seuil arbitraire, ce que le principe directeur interdit. L'étiquette de provenance permet à la couche 1 de trancher.
+
+- **Le genre est un filtre de notoriété communautaire, et il est daté.** Part d'artistes sans aucun genre, par époque de formation : 69,3 % pour 1967-1979, 72,6 % pour 1980-1999, 78,9 % pour 2000-2014, **82,7 % depuis 2023**. La densité près du présent est donc doublement une borne basse : par la présence, et parce que les groupes récents sont moins tagués. Ce n'est pas un signal historique, c'est un artefact de catalogage.
+
+- **L'arbre des genres vient de Wikidata seule** et ne couvre pas tout le vocabulaire ; la piste MusicBrainz (`subgenre`) reste non tranchée.
+
+- **`density` ignore les orchestres et chœurs**, faute d'un modèle de ligne de vie comparable. Ils sont présents dans `bands` et `albums` : la couche 1 peut les afficher autrement.
 
 ## Installation, tests, exécution
 
@@ -67,49 +118,40 @@ uv sync
 
 Deux niveaux de test :
 
-- `uv run pytest` — suite rapide, quelques secondes, sans dépendance au dump. Tourne sur 28 témoins réels versionnés dans `pipeline/tests/fixtures/` (extraits authentiques du dump de référence, pas de données inventées).
-- `uv run pytest -m slow` — test de ligne de base : confronte le pipeline entier aux ~3 millions d'enregistrements du dump de référence et compare **exactement** les comptes ci-dessus. Exige les extractions dans `data/work/` (non versionnées, ~10 min à produire) ; sinon le test est ignoré.
+- `uv run pytest` — suite rapide, quelques secondes, sans dépendance au dump. Tourne sur 28 témoins réels versionnés dans `tests/fixtures/` (extraits authentiques du dump de référence, jamais de données inventées).
+- `uv run pytest -m slow` — ligne de base : confronte le pipeline entier aux ~3 millions d'enregistrements du dump de référence. Exige les extractions dans `data/work/` (non versionnées, ~10 min à produire) ; sinon le test est ignoré.
 
-Exécution complète (télécharge et vérifie les archives si besoin, extrait, transforme, valide, publie) :
+La suite passe depuis n'importe quel répertoire : tous les chemins sont ancrés sur le paquet (`musilogy.paths`), jamais sur le répertoire courant.
 
 ```bash
-uv run python scripts/run_pipeline.py
+uv run musilogy run                   # fetch → extract → transform → validate → publish
+uv run musilogy make-fixtures         # régénère les témoins depuis les extractions
+uv run musilogy check-genre-parents   # vérifie l'empreinte de l'archive Wikidata, sans réseau
 ```
 
-Produit `data/out/20260909-001002/` : les cinq tables en Parquet, un export JSON colonnaire gzippé pour `bands` et `genres`, et `manifest.json` (empreintes, comptes, anomalies R2, commit).
+Qualité : `uv run ruff check`, `uv run ruff format --check`, `uv run mypy`. La CI (`.github/workflows/ci.yml`) passe ces trois contrôles plus la suite rapide ; la suite lente exige le dump et reste manuelle.
 
 ## Structure du dépôt
 
 ```
-pipeline/
+src/musilogy/
   fetch.py               télécharge et vérifie une archive MusicBrainz (SHA-256)
   extract.py             projette les enregistrements bruts en flux, sans logique métier
   build.py               enchaîne les fichiers SQL, applique les corrections, vérifie les invariants
-  publish.py             écrit Parquet, JSON colonnaire et manifest.json
-  corrections.csv        R6, versionné
+  publish.py             écrit Parquet, JSON colonnaire scindé et manifest.json
+  cli.py                 les trois commandes
+  paths.py               chemins ancrés sur le paquet
+  corrections.csv        corrections manuelles, versionné
   reference/             empreintes officielles, archive Wikidata datée et sa requête SPARQL
-  sql/
-    00_macros.sql        macro yr() : lecture stricte d'une année, jamais un CAST direct
-    10_bands.sql         R1, R2 : population et dates
-    20_albums.sql        R3 : sélection des albums
-    30_presence.sql      R4, R7 : table presence, y_presence_end
-    40_genres.sql        R5 : vocabulaire des genres
-    50_density.sql       R7 : agrégat de densité
-    60_genre_parents.sql arbre des genres depuis Wikidata
-    90_invariants.sql    vues de contrôle qui doivent renvoyer zéro ligne
-  tests/
-    fixtures/            témoins réels versionnés (artists.jsonl, release_groups.jsonl, ATTRIBUTION.md)
-    test_*.py            suite rapide (une par règle) et test_baseline.py (suite lente)
-scripts/
-  make_fixtures.py       extrait les témoins des extractions complètes
-  check_genre_parents.py vérifie l'empreinte de l'archive Wikidata, aucun appel réseau
-  run_pipeline.py        exécution complète : fetch → extract → transform → validate → publish
+  sql/                   les règles, en ordre topologique
+tests/
+  conftest.py            fixtures partagées
+  fixtures/              témoins réels versionnés
+  test_*.py              une suite par règle, plus test_baseline.py (suite lente)
 ```
-
-Les numéros des fichiers SQL forment un ordre topologique de dépendance, pas une liste : ils avancent par pas de dix pour qu'une règle s'insère sans renumérotation.
 
 ## Licence et attribution
 
 Les données de base MusicBrainz (artistes, dates, albums, relations) sont **CC0**. Les genres et tags sont des données supplémentaires sous **CC-BY-NC-SA 3.0**. Comme `bands` et `genres` en dépendent, **le jeu de données produit par ce pipeline est distribué sous CC-BY-NC-SA 3.0** : attribution à MusicBrainz obligatoire, usage non commercial uniquement, et partage à l'identique imposé à toute redistribution.
 
-Les fixtures versionnées dans `pipeline/tests/fixtures/` sont des extraits réels du dump MusicBrainz de référence, soumis à la même licence (voir `pipeline/tests/fixtures/ATTRIBUTION.md`).
+Les fixtures versionnées dans `tests/fixtures/` sont des extraits réels du dump MusicBrainz de référence, soumis à la même licence (voir `tests/fixtures/ATTRIBUTION.md`).
