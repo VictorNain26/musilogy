@@ -296,6 +296,19 @@ def test_genre_parent_unknown_genre_is_reported(con):
     assert violations.get("genre_parent_unknown_genre") == 2
 
 
+def test_genre_parent_unknown_genre_survives_a_null_genre_mbid_in_the_vocabulary(con):
+    # Same NULL trap as album_without_band and unknown_genre: a NULL
+    # genre_mbid in the `genres` subquery used to make NOT IN never true.
+    con.execute("INSERT INTO genre_parents VALUES ('inconnu-null-poison', 'inconnu-parent-null-poison', 'wikidata')")
+    con.execute("INSERT INTO genres VALUES (NULL, 'null-poison', 0)")
+    violations = dict(check_invariants(con, SQL))
+    con.execute(
+        "DELETE FROM genre_parents WHERE genre_mbid = 'inconnu-null-poison'"
+    )
+    con.execute("DELETE FROM genres WHERE genre_mbid IS NULL")
+    assert violations.get("genre_parent_unknown_genre") == 2
+
+
 def test_genre_parent_cycle_is_reported(con):
     con.execute("INSERT INTO genres VALUES ('cycle-a', 'A', 0), ('cycle-b', 'B', 0)")
     con.execute(
