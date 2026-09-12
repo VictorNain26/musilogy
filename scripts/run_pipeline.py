@@ -1,15 +1,12 @@
 """Exécution complète : fetch → extract (si besoin) → transform → validate → publish."""
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import duckdb
 
-import duckdb  # noqa: E402
-
-from pipeline.build import build, check_invariants  # noqa: E402
-from pipeline.extract import extract, reduce_artist, reduce_release_group  # noqa: E402
-from pipeline.fetch import fetch_dump  # noqa: E402
-from pipeline.publish import publish  # noqa: E402
+from pipeline.build import build, check_invariants
+from pipeline.extract import extract, reduce_artist, reduce_release_group
+from pipeline.fetch import fetch_dump
+from pipeline.publish import publish
 
 DUMP = "20260909-001002"
 RAW_DIR = Path("data/raw")
