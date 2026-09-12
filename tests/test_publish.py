@@ -77,10 +77,14 @@ def test_web_export_carries_what_a_consumer_needs_to_join_and_to_audit(con, tmp_
 
 def test_web_artifacts_alone_reproduce_the_published_density(tmp_path):
     # The regression that matters. A web-only consumer applies the rule of
-    # 60_density.sql to bands_timeline + genres. If the reliability columns do
-    # not travel, it cannot see which genres are excluded and rebuilds the
-    # cells this layer withholds — on the reference dump, 828 of them, on
-    # exactly the art-music genres the exclusion targets.
+    # 60_density.sql to bands_timeline + genres. The rule now travels as a
+    # column, `density_eligible`, so this test reads that column instead of
+    # recomposing the two bounds it stands for; the two measurements stay
+    # published alongside it for whoever wants to audit the rule rather than
+    # trust it. If the column did not travel, a web-only consumer could not
+    # see which genres are excluded and would rebuild the cells this layer
+    # withholds — on the reference dump, 828 of them, on exactly the
+    # art-music genres the exclusion targets.
     artists, release_groups = unreliable_genre_records()
     c = build_synthetic(tmp_path, artists, release_groups)
     out = tmp_path / "out"
@@ -89,13 +93,10 @@ def test_web_artifacts_alone_reproduce_the_published_density(tmp_path):
     vocabulary = read_web(out, "genres")
     excluded = {
         mbid
-        for mbid, pct, n in zip(
-            vocabulary["genre_mbid"],
-            vocabulary["multi_artist_drop_pct"],
-            vocabulary["n_candidate_credits"],
-            strict=True,
+        for mbid, eligible in zip(
+            vocabulary["genre_mbid"], vocabulary["density_eligible"], strict=True
         )
-        if pct is not None and pct >= 50 and n >= 200
+        if not eligible
     }
     assert excluded, "the scenario must exercise at least one excluded genre"
 

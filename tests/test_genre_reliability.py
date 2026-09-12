@@ -91,3 +91,24 @@ def test_the_rate_limit_is_a_session_variable(tmp_path):
     c = build_synthetic(tmp_path, artists, release_groups, multi_artist_drop_limit=100.1)
     assert density_rows(c, "g-excluded") > 0
     assert c.execute("SELECT * FROM density_exclusions").fetchone() == (0, 0)
+
+
+def test_density_eligible_states_the_rule_instead_of_leaving_it_to_be_reapplied(c):
+    # The three shapes: over both bounds, over the rate but under the sample,
+    # and clean. A consumer reading this column needs neither threshold.
+    eligible = dict(c.execute("SELECT genre_mbid, density_eligible FROM genres").fetchall())
+    assert eligible == {
+        "g-excluded": False,
+        "g-small": True,
+        "g-clean": True,
+        "g-orphan": True,
+    }
+
+
+def test_a_genre_with_no_measurable_rate_stays_eligible(c):
+    # NULL is not "over the limit": three-valued logic must not silence a genre
+    # that has no candidate release-group at all.
+    assert measurement(c, "g-orphan") == (0, None)
+    assert c.execute(
+        "SELECT density_eligible FROM genres WHERE genre_mbid = 'g-orphan'"
+    ).fetchone() == (True,)

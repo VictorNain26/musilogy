@@ -50,6 +50,19 @@ UPDATE genres SET
     WHERE d.genre_mbid = genres.genre_mbid
   );
 
+-- The rule itself, materialized once here rather than recomposed by every
+-- consumer. Without it the two measurements travel but the two bounds do not,
+-- so layer 1 has to hardcode 50 and 200 to know which genres density
+-- withholds — reimplementing a rule is where it gets lost. coalesce, not a
+-- bare comparison: a NULL rate means no candidate at all, which keeps the
+-- genre eligible instead of silencing it through three-valued logic.
+ALTER TABLE genres ADD COLUMN density_eligible BOOLEAN;
+UPDATE genres SET density_eligible = NOT coalesce(
+  multi_artist_drop_pct >= getvariable('multi_artist_drop_limit')
+    AND n_candidate_credits >= getvariable('min_candidate_credits'),
+  false
+);
+
 -- Counter for manifest.json: a rule that removes data must leave a visible
 -- trace. On the reference dump the rule excludes 13 genres. Twelve are art
 -- music; the thirteenth, `mincecore` (73.1% on 216 candidates), is a grindcore
@@ -59,5 +72,4 @@ UPDATE genres SET
 CREATE OR REPLACE TABLE density_exclusions AS
 SELECT count(*) AS genres, coalesce(sum(n_bands), 0) AS band_genre_pairs
 FROM genres
-WHERE multi_artist_drop_pct >= getvariable('multi_artist_drop_limit')
-  AND n_candidate_credits >= getvariable('min_candidate_credits');
+WHERE NOT density_eligible;

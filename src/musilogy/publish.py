@@ -39,11 +39,20 @@ BANDS_WEB_COLUMNS = [
     "genres",
 ]
 WEB_COLUMNS = {
-    # The two reliability columns are not decoration: without them a web-only
-    # consumer cannot apply the exclusion rule of 60_density.sql, recomputes
-    # density from bands_timeline alone, and silently invents the 828 cells of
-    # the art-music genres this layer deliberately withholds.
-    "genres": ["genre_mbid", "name", "n_bands", "n_candidate_credits", "multi_artist_drop_pct"],
+    # density_eligible carries the exclusion rule of 60_density.sql itself:
+    # without it a web-only consumer cannot apply the rule, recomputes density
+    # from bands_timeline alone, and silently invents the 828 cells of the
+    # art-music genres this layer deliberately withholds. The two measurements
+    # stay published alongside it for whoever wants to audit the rule rather
+    # than trust it.
+    "genres": [
+        "genre_mbid",
+        "name",
+        "n_bands",
+        "density_eligible",
+        "n_candidate_credits",
+        "multi_artist_drop_pct",
+    ],
     # Published too, so the frieze reads the aggregate rather than rebuilding
     # it: a consumer that recomputes it reimplements a rule, and reimplementing
     # is where the exclusion gets lost.

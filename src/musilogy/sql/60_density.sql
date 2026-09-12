@@ -11,15 +11,11 @@ WHERE b.type = 'Group'
   AND y.year BETWEEN p.y0 AND p.y_presence_end
   -- Genres the multi-artist rule of 20_albums.sql mostly destroys are dropped
   -- here and only here: bands, albums, genres and members keep every one of
-  -- them, because population and projection are two different things. The two
-  -- bounds are session variables set by build(), the rate itself is measured
-  -- in 55_genre_reliability.sql. NOT EXISTS rather than a negated comparison:
-  -- a genre whose rate is NULL (no candidate release-group at all) must stay,
-  -- not be silenced by three-valued logic.
-  AND NOT EXISTS (
+  -- them, because population and projection are two different things. The rule
+  -- is measured and materialized in 55_genre_reliability.sql and published on
+  -- `genres`, so this file applies it and layer 1 reads it — neither restates it.
+  AND EXISTS (
     SELECT 1 FROM genres gx
-    WHERE gx.genre_mbid = t.g.mbid
-      AND gx.multi_artist_drop_pct >= getvariable('multi_artist_drop_limit')
-      AND gx.n_candidate_credits >= getvariable('min_candidate_credits')
+    WHERE gx.genre_mbid = t.g.mbid AND gx.density_eligible
   )
 GROUP BY g.mbid, y.year;
