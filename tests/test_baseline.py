@@ -54,6 +54,15 @@ NEUTRALISED_INFERENCES = {
     "last_album_before_declared_begin": 271,
     "first_album_with_begin_below_min_year": 73,
 }
+# The measurements that argue for a rule of 20_albums.sql rather than describe
+# an output: accepting Demo and excluding Live are decisions these numbers
+# justify, and the README used to be their only home — where they drifted.
+# (release-groups both demo and studio, of which demo first, median years earlier)
+DEMO_BEFORE_STUDIO = (3_174, 2_144, 3.0)
+# Bands carrying a live release dated more than 20 years after their last studio
+# album: the reason a live date is not evidence of activity.
+LIVE_LONG_AFTER_LAST_STUDIO = 710
+BANDS_WITHOUT_ALBUM = 404_925
 WORK = work_dir(REFERENCE_DUMP)
 
 
@@ -130,3 +139,49 @@ def test_reference_dump_matches_the_baseline():
     ).fetchone()
     assert row is not None
     assert row[0] == 0
+
+    row = con.execute(
+        """
+        WITH cred AS (
+          SELECT list_distinct(artists)[1] AS band_mbid, yr(date) AS y,
+                 coalesce(secondary, []) AS sec
+          FROM raw_release_groups
+          WHERE len(list_distinct(artists)) = 1
+            AND yr(date) BETWEEN 1850 AND 2026
+        ),
+        pairs AS (
+          SELECT c.band_mbid,
+                 min(c.y) FILTER (WHERE list_contains(c.sec, 'Demo')) AS y_demo,
+                 min(c.y) FILTER (WHERE len(c.sec) = 0) AS y_studio
+          FROM cred c JOIN bands b ON b.mbid = c.band_mbid
+          GROUP BY c.band_mbid
+          HAVING y_demo IS NOT NULL AND y_studio IS NOT NULL
+        )
+        SELECT count(*), count(*) FILTER (WHERE y_demo < y_studio),
+               median(y_studio - y_demo) FILTER (WHERE y_demo < y_studio)
+        FROM pairs
+        """
+    ).fetchone()
+    assert row == DEMO_BEFORE_STUDIO
+
+    row = con.execute(
+        """
+        SELECT count(DISTINCT l.band_mbid) FROM (
+          SELECT list_distinct(artists)[1] AS band_mbid, yr(date) AS y
+          FROM raw_release_groups
+          WHERE list_contains(coalesce(secondary, []), 'Live')
+            AND len(list_distinct(artists)) = 1
+            AND yr(date) IS NOT NULL
+        ) l JOIN bands b ON b.mbid = l.band_mbid
+        WHERE b.y_last_album IS NOT NULL AND l.y - b.y_last_album > 20
+        """
+    ).fetchone()
+    assert row is not None
+    assert row[0] == LIVE_LONG_AFTER_LAST_STUDIO
+
+    row = con.execute(
+        "SELECT count(*) FROM bands b WHERE NOT EXISTS "
+        "(SELECT 1 FROM albums a WHERE a.band_mbid = b.mbid)"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == BANDS_WITHOUT_ALBUM
