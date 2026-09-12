@@ -598,6 +598,18 @@ def test_band_unexpected_type_catches_a_null_type(con):
     assert violations.get("band_unexpected_type") == 1
 
 
+def test_corrections_duplicate_is_reported(con):
+    mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
+    with restored(con, ("DELETE FROM corrections WHERE justification = 'dup'", [])):
+        con.execute(
+            "INSERT INTO corrections VALUES (?, 'begin', '2000', 'dup', 's'), "
+            "(?, 'begin', '1999', 'dup', 's')",
+            [mbid, mbid],
+        )
+        violations = dict(check_invariants(con, SQL))
+    assert violations.get("corrections_duplicate") == 1
+
+
 def test_corrections_invalid_survives_a_null_mbid_in_raw_artists(con):
     # Same NULL trap as album_without_band and unknown_genre: a NULL mbid
     # in the `raw_artists` subquery used to make NOT IN never true.

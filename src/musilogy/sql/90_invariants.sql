@@ -215,3 +215,8 @@ CREATE OR REPLACE VIEW corrections_invalid AS
 CREATE OR REPLACE VIEW band_unexpected_type AS
   SELECT mbid FROM bands
   WHERE type IS NULL OR type NOT IN ('Group', 'Orchestra', 'Choir');
+-- apply_corrections runs UPDATE ... FROM corrections: two rows for the same
+-- (mbid, field) make the applied value depend on scan order. The file is empty
+-- today, which is exactly when the contract is cheap to state.
+CREATE OR REPLACE VIEW corrections_duplicate AS
+  SELECT mbid, field FROM corrections GROUP BY mbid, field HAVING count(*) > 1;

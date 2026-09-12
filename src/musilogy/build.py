@@ -111,6 +111,7 @@ INVARIANTS = (
     "duplicate_member",
     "corrections_file_too_large",
     "corrections_invalid",
+    "corrections_duplicate",
 )
 
 
