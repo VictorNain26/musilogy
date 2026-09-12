@@ -31,7 +31,7 @@ def test_no_genre_is_its_own_parent(con):
 def test_source_is_recorded(con):
     sources = {r[0] for r in con.execute("SELECT DISTINCT source FROM genre_parents").fetchall()}
     assert sources <= {"wikidata", "musicbrainz"}
-    assert sources, "genre_parents ne doit pas être vide sur les fixtures"
+    assert sources, "genre_parents must not be empty on the fixtures"
 
 
 def test_relation_is_multivalued(con):
@@ -40,18 +40,18 @@ def test_relation_is_multivalued(con):
         GROUP BY genre_mbid ORDER BY n DESC LIMIT 1
     """).fetchone()
     assert row is not None
-    assert row[1] > 1, "au moins un genre doit avoir plusieurs parents sur les fixtures"
+    assert row[1] > 1, "at least one genre must have several parents on the fixtures"
 
 
 def test_self_reference_is_excluded_by_the_production_sql(tmp_path):
-    # L'archive réelle ne contient aucune auto-référence (0 sur 2515 lignes,
-    # vérifié) : ce test ne peut pas s'appuyer sur elle pour exercer la
-    # clause `w.mbid <> w.parentMbid`. Il rejoue le SQL réel de production
-    # (même fichier, chemin d'archive substitué) sur une archive synthétique
-    # qui, elle, contient une auto-référence.
+    # The real archive contains no self-reference (0 out of 2515 lines,
+    # verified): this test cannot rely on it to exercise the
+    # `w.mbid <> w.parentMbid` clause. It replays the real production SQL
+    # (same file, archive path substituted) against a synthetic archive
+    # that does contain a self-reference.
     real_path = "pipeline/reference/20260912-wikidata-genre-parents.csv"
     sql_text = (SQL / "60_genre_parents.sql").read_text(encoding="utf-8")
-    assert real_path in sql_text, "chemin de l'archive introuvable dans le SQL de production"
+    assert real_path in sql_text, "archive path not found in the production SQL"
 
     synthetic = tmp_path / "synthetic.csv"
     synthetic.write_text(
@@ -70,9 +70,9 @@ def test_self_reference_is_excluded_by_the_production_sql(tmp_path):
 
 
 def test_genre_parents_csv_resolves_independently_of_cwd(tmp_path, monkeypatch):
-    # GENRE_PARENTS_CSV se résout depuis build.py (__file__), pas depuis le
-    # cwd du process : lancé d'un autre répertoire, l'archive reste trouvée
-    # et genre_parents n'est pas silencieusement publiée vide.
+    # GENRE_PARENTS_CSV resolves from build.py's __file__, not from the
+    # process's cwd: run from another directory, the archive is still found
+    # and genre_parents is not silently published empty.
     sql_dir = SQL.resolve()
     artists = (FIX / "artists.jsonl").resolve()
     rgs = (FIX / "release_groups.jsonl").resolve()
@@ -93,5 +93,5 @@ def test_build_creates_empty_table_when_archive_is_missing(monkeypatch, tmp_path
         build(c, SQL, FIX / "artists.jsonl", FIX / "release_groups.jsonl", None)
     assert c.execute("SELECT count(*) FROM genre_parents").fetchall() == [(0,)]
     assert any("genre_parents" in r.message for r in caplog.records), (
-        "le fallback en table vide doit logger un avertissement"
+        "the empty-table fallback must log a warning"
     )

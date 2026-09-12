@@ -21,22 +21,22 @@ def end_of(con, mbid):
 
 
 def test_declared_end_wins_over_a_later_album(con):
-    # Cardiacs : fin déclarée 2020, album retenu en 2025.
+    # Cardiacs: declared end 2020, album retained in 2025.
     assert end_of(con, "f7338f2a-136b-4d5e-b099-5504cf997f58") == 2020
 
 
 def test_active_band_is_not_stopped_at_its_last_album(con):
-    # U2 : aucune fin déclarée, dernier album 2025.
+    # U2: no declared end, last album 2025.
     assert end_of(con, "a3cb23fc-acd3-4ce0-8f36-1e5aa6a18432") == 2025
 
 
 def test_band_without_album_is_present_only_at_formation(con):
-    # ROD : formé en 1996, aucun album retenu.
+    # ROD: formed in 1996, no album retained.
     assert end_of(con, "3cb86073-22d7-43d5-8f22-422b1e54988e") == 1996
 
 
 def test_albums_before_formation_do_not_move_the_floor(con):
-    # Polska Radio One : formé 2015, albums 2013 et 2014.
+    # Polska Radio One: formed 2015, albums 2013 and 2014.
     assert end_of(con, "703c4c92-43f7-4268-9f85-0ca6f0cd1a22") == 2015
 
 

@@ -61,21 +61,21 @@ def test_month_precision_is_reduced_to_the_year(con):
 
 
 def test_group_without_genre_is_excluded(con):
-    # The Belle Stars: Group, begin=1980, end=1986, aucun genre — ne peut
-    # être écarté que par la condition de genre de R1.
+    # The Belle Stars: Group, begin=1980, end=1986, no genre — can only
+    # be excluded by R1's genre condition.
     assert rows(con, "SELECT count(*) FROM bands WHERE mbid = '62f7a211-0056-45fe-934a-37a388a7356f'") == [(0,)]
 
 
 def test_begin_before_lower_bound_is_excluded(con):
-    # Handel and Haydn Society: Group, begin=1815, avec genre — ne peut être
-    # écarté que par la borne basse 1850 de R1.
+    # Handel and Haydn Society: Group, begin=1815, with genre — can only
+    # be excluded by R1's lower bound of 1850.
     assert rows(con, "SELECT count(*) FROM bands WHERE mbid = '35ddcb29-4c16-4af6-b6f8-32143ee24a6c'") == [(0,)]
 
 
 def test_future_end_is_absent_in_dated(con):
-    # Thunder Jolt: end=2027-01-05, postérieur à dump_year=2026. Aucun
-    # témoin réel de fin future ne porte de genre (donc jamais dans `bands`,
-    # écarté avant par R1) : on éprouve R2 sur la table intermédiaire `dated`.
+    # Thunder Jolt: end=2027-01-05, after dump_year=2026. No real witness
+    # with a future end carries a genre (so it's never in `bands`, already
+    # excluded by R1): we exercise R2 on the intermediate `dated` table.
     assert rows(con, """
         SELECT y_end_declared FROM dated
         WHERE mbid = 'd36b0fad-abd7-44e4-88fa-f638bbf8c9a6'

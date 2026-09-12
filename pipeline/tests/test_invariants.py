@@ -15,10 +15,10 @@ def con():
 
 
 def test_build_skips_90_files():
-    # Connexion dédiée, jamais passée à check_invariants : sur `con` (portée
-    # module, partagée par tous les tests du fichier), une exécution
-    # antérieure de 90_invariants.sql y aurait déjà créé duplicate_band et ce
-    # test ne dépendrait plus que de son rang dans le fichier.
+    # Dedicated connection, never passed to check_invariants: on `con`
+    # (module-scoped, shared by every test in this file), a previous run of
+    # 90_invariants.sql would already have created duplicate_band, and this
+    # test would only depend on its rank within the file.
     c = duckdb.connect(":memory:")
     build(c, SQL, FIX / "artists.jsonl", FIX / "release_groups.jsonl", None)
     with pytest.raises(duckdb.CatalogException):
@@ -112,9 +112,9 @@ def test_album_out_of_window_is_reported(con):
     original = con.execute(
         "SELECT y FROM albums WHERE rg_mbid = ?", [rg_mbid]
     ).fetchone()[0]
-    # 2027 : au-delà de dump_year (2026) pour *toute* bande, quelle que soit
-    # celle que LIMIT 1 retourne. 2026 tombait dans la fenêtre d'acceptation
-    # de 133 des 181 bandes des fixtures et ne passait que par chance de tri.
+    # 2027: past dump_year (2026) for *any* band, whichever one LIMIT 1
+    # returns. 2026 fell within the acceptance window for 133 of the 181
+    # fixture bands and only passed by luck of sort order.
     con.execute("UPDATE albums SET y = 2027 WHERE rg_mbid = ?", [rg_mbid])
     violations = dict(check_invariants(con, SQL))
     con.execute("UPDATE albums SET y = ? WHERE rg_mbid = ?", [original, rg_mbid])
@@ -302,8 +302,8 @@ def test_corrections_file_too_large_is_reported(con):
 
 
 def test_corrections_invalid_is_reported(con):
-    # Trois no-ops silencieux réels : un mbid inconnu, un champ mal orthographié
-    # (typo) et un champ non supporté par apply_corrections.
+    # Three real silent no-ops: an unknown mbid, a misspelled field (typo),
+    # and a field unsupported by apply_corrections.
     mbid = con.execute("SELECT mbid FROM bands LIMIT 1").fetchone()[0]
     con.execute(
         "INSERT INTO corrections VALUES "

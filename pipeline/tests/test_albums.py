@@ -61,9 +61,9 @@ def test_album_before_formation_is_kept_within_five_years(con):
 
 
 def test_future_dated_release_group_is_dropped(con):
-    # Burn Like The Sun (Inspiral Carpets), datée 2027-01-29 : formé en 1989,
-    # sans fin déclarée, la fenêtre R3.5 monte jusqu'à 2031 (2026 + 5). Seule
-    # la clause R3.3 (année <= année du dump) écarte ce témoin.
+    # Burn Like The Sun (Inspiral Carpets), dated 2027-01-29: formed in 1989,
+    # with no declared end, the R3.5 window extends to 2031 (2026 + 5). Only
+    # the R3.3 clause (year <= dump year) excludes this witness.
     assert con.execute(
         "SELECT count(*) FROM albums WHERE rg_mbid = ?", [BURN_LIKE_THE_SUN]
     ).fetchall() == [(0,)]

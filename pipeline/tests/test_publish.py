@@ -91,9 +91,9 @@ def test_manifest_corrections_checksum_is_none_without_file(con, tmp_path):
 
 
 def test_r2_anomaly_counters_are_not_mismapped_between_subrules(tmp_path):
-    # Comptes volontairement distincts par sous-règle : sur les fixtures
-    # partagées, les cinq compteurs valent tous 1 et un échange de clés
-    # (begin_future <-> end_future, par exemple) resterait invisible.
+    # Deliberately distinct counts per sub-rule: on the shared fixtures,
+    # all five counters equal 1, and a key swap (begin_future <-> end_future,
+    # for example) would otherwise go unnoticed.
     records = (
         [_synthetic_artist(f"begin-illegible-{i}", "????-01-01", None) for i in range(2)]
         + [_synthetic_artist(f"end-illegible-{i}", "2000-01-01", "????-06") for i in range(3)]
