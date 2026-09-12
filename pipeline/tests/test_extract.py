@@ -1,4 +1,9 @@
-from pipeline.extract import reduce_artist, reduce_release_group
+import io
+import logging
+import lzma
+import tarfile
+
+from pipeline.extract import iter_records, reduce_artist, reduce_release_group
 
 GROUP = {
     "id": "a9424175-8b06-44ad-a1f4-319e92a50879",
@@ -54,3 +59,24 @@ def test_reduce_release_group_keeps_duplicate_credits():
 
 def test_reduce_release_group_drops_singles():
     assert reduce_release_group({"id": "r", "primary-type": "Single"}) is None
+
+
+def _write_mbdump_archive(path, lines: list[bytes]) -> None:
+    content = b"\n".join(lines) + b"\n"
+    with lzma.open(path, "wb") as xz, tarfile.open(fileobj=xz, mode="w|") as tar:
+        info = tarfile.TarInfo(name="mbdump/mbdump")
+        info.size = len(content)
+        tar.addfile(info, io.BytesIO(content))
+
+
+def test_iter_records_surfaces_malformed_lines_instead_of_dropping_them_silently(
+    tmp_path, caplog
+):
+    archive = tmp_path / "sample.tar.xz"
+    _write_mbdump_archive(archive, [b'{"id": "ok"}', b"{not json"])
+
+    with caplog.at_level(logging.WARNING):
+        records = list(iter_records(archive))
+
+    assert records == [{"id": "ok"}]
+    assert any("1" in r.message for r in caplog.records)

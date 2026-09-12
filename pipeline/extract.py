@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import lzma
 import tarfile
 from pathlib import Path
 from typing import Callable, Iterator
+
+logger = logging.getLogger(__name__)
 
 KEPT_TYPES = {"Group", "Orchestra", "Choir"}
 
@@ -56,6 +59,7 @@ def reduce_release_group(rec: dict) -> dict | None:
 
 def iter_records(archive: Path) -> Iterator[dict]:
     """Parcourt les lignes JSON de mbdump/* sans jamais écrire le tar décompressé."""
+    skipped = 0
     with lzma.open(archive) as xz, tarfile.open(fileobj=xz, mode="r|") as tar:
         for member in tar:
             if not member.isfile() or not member.name.startswith("mbdump/"):
@@ -70,7 +74,10 @@ def iter_records(archive: Path) -> Iterator[dict]:
                 try:
                     yield json.loads(line, strict=False)
                 except json.JSONDecodeError:
+                    skipped += 1
                     continue
+    if skipped:
+        logger.warning("%s : %d ligne(s) JSON malformée(s) ignorée(s)", archive, skipped)
 
 
 def extract(archive: Path, reducer: Callable[[dict], dict | None], out: Path) -> int:
