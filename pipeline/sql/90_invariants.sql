@@ -1,0 +1,42 @@
+-- Chaque vue doit être vide. Le nom de la vue est le nom de l'invariant.
+CREATE OR REPLACE VIEW duplicate_band AS
+  SELECT mbid FROM bands GROUP BY mbid HAVING count(*) > 1;
+CREATE OR REPLACE VIEW band_out_of_window AS
+  SELECT mbid FROM bands WHERE y0 IS NULL OR y0 < 1850 OR y0 > getvariable('dump_year');
+CREATE OR REPLACE VIEW end_before_begin AS
+  SELECT mbid FROM bands WHERE y_end_declared IS NOT NULL
+    AND (y_end_declared < y0 OR y_end_declared > getvariable('dump_year'));
+CREATE OR REPLACE VIEW last_album_mismatch AS
+  SELECT b.mbid FROM bands b
+  WHERE b.y_last_album IS DISTINCT FROM
+        (SELECT max(a.y) FROM albums a WHERE a.band_mbid = b.mbid);
+CREATE OR REPLACE VIEW album_without_band AS
+  SELECT rg_mbid FROM albums WHERE band_mbid NOT IN (SELECT mbid FROM bands);
+CREATE OR REPLACE VIEW album_out_of_window AS
+  SELECT a.rg_mbid FROM albums a JOIN bands b ON b.mbid = a.band_mbid
+  WHERE a.y NOT BETWEEN b.y0 - 5 AND coalesce(b.y_end_declared, getvariable('dump_year')) + 5
+     OR a.y > getvariable('dump_year');
+CREATE OR REPLACE VIEW band_without_genre AS
+  SELECT mbid FROM bands WHERE len(genres) = 0;
+-- Indépendant du tri appliqué à la construction (10_bands.sql) : compare
+-- chaque paire adjacente, ne réutilise pas la formule de tri de bands.
+CREATE OR REPLACE VIEW band_genres_out_of_order AS
+  SELECT mbid FROM bands
+  WHERE len(genres) > 1
+    AND EXISTS (
+      SELECT 1 FROM range(1, len(genres)) AS t(i)
+      WHERE genres[i + 1].votes > genres[i].votes
+         OR (genres[i + 1].votes = genres[i].votes AND genres[i + 1].name < genres[i].name)
+    );
+CREATE OR REPLACE VIEW unknown_genre AS
+  SELECT t.g.mbid FROM (SELECT unnest(genres) AS g FROM bands) t
+  WHERE t.g.mbid NOT IN (SELECT genre_mbid FROM genres);
+CREATE OR REPLACE VIEW presence_out_of_range AS
+  SELECT p.mbid FROM presence p JOIN bands b USING (mbid)
+  WHERE p.y_presence_end < p.y0 OR p.y_presence_end > getvariable('dump_year')
+     OR (b.y_end_declared IS NOT NULL AND p.y_presence_end <> b.y_end_declared);
+CREATE OR REPLACE VIEW density_out_of_range AS
+  SELECT genre_mbid FROM density WHERE year > getvariable('dump_year');
+CREATE OR REPLACE VIEW density_above_band_count AS
+  SELECT d.genre_mbid FROM density d JOIN genres g USING (genre_mbid)
+  WHERE d.present > g.n_bands;

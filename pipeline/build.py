@@ -62,3 +62,21 @@ def build(
         if path.name.startswith("90_"):
             continue
         con.execute(path.read_text(encoding="utf-8"))
+
+
+INVARIANTS = (
+    "duplicate_band", "band_out_of_window", "end_before_begin",
+    "last_album_mismatch", "album_without_band", "album_out_of_window",
+    "band_without_genre", "band_genres_out_of_order", "unknown_genre",
+    "presence_out_of_range", "density_out_of_range", "density_above_band_count",
+)
+
+
+def check_invariants(con: duckdb.DuckDBPyConnection, sql_dir: Path) -> list[tuple[str, int]]:
+    con.execute((sql_dir / "90_invariants.sql").read_text(encoding="utf-8"))
+    violations = []
+    for name in INVARIANTS:
+        n = con.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
+        if n:
+            violations.append((name, n))
+    return violations
