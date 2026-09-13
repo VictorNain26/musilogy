@@ -97,7 +97,9 @@ Chaque ligne porte son `mbid` — la clé de jointure vers `density`, `members` 
 
 **Deux sujets restent ouverts pour la couche 1.** Le poids : 15,6 Mo gzip pour la frise, non pas à cause des genres (1,7 Mo) mais des identifiants eux-mêmes, des UUID de 36 octets qui ne se compressent pas ; un chargement initial complet n'est pas réaliste sur mobile, et le découpage par genre ou par période lui revient. Et l'absence de hiérarchie : les 1 348 genres sont **plats**, sans regroupement possible, faute de source fiable — parcourir cette liste à la main n'est pas une interface.
 
-`manifest.json` porte les empreintes des archives, les comptes, les **paramètres** du run (`dump_year`, `min_year`, `multi_artist_drop_limit`, `min_candidate_credits`), les **entrées** (`rows_loaded` par table brute, le sidecar d'extraction), les anomalies de lecture de dates, les trois compteurs de neutralisation, les exclusions de densité, le commit et l'empreinte des corrections.
+`manifest.json` porte les empreintes des archives **et celles des neuf fichiers livrés** (`output_sha256`), les comptes, les **paramètres** du run (`dump_year`, `min_year`, `multi_artist_drop_limit`, `min_candidate_credits`), les **entrées** (`rows_loaded` par table brute, le sidecar d'extraction), les anomalies de lecture de dates, les trois compteurs de neutralisation, les exclusions de densité, le commit et l'empreinte des corrections.
+
+Ces empreintes de sortie sont opposables parce que la livraison est reproductible : à dump et code identiques, deux exécutions écrivent les mêmes octets. L'ordre des lignes est fixé par une clé totale sur chaque table et le gzip ne porte pas d'horodatage. Un consommateur distingue donc une livraison inchangée d'une nouvelle par sa seule empreinte, sans retélécharger.
 
 ## Chiffres de référence
 
