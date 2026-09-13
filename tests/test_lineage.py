@@ -1,6 +1,14 @@
 from conftest import build_synthetic, synthetic_artist
 
 GENRE = [{"mbid": "g-lineage", "name": "lineage", "votes": 1}]
+# Valid UUIDs for the same reason conftest gives them to its own witnesses:
+# these bands reach `frieze`, and publish() packs a frieze mbid into a 16-byte
+# record. A readable label would be a witness of nothing this pipeline can
+# deliver, and frieze_mbid_unencodable now says so.
+SAME_A = "00000000-0000-4000-8000-000000000011"
+SAME_B = "00000000-0000-4000-8000-000000000012"
+EARLY = "00000000-0000-4000-8000-000000000013"
+LATE = "00000000-0000-4000-8000-000000000014"
 
 
 def test_lineage_orientation_requires_the_years_to_differ(tmp_path):
@@ -12,25 +20,19 @@ def test_lineage_orientation_requires_the_years_to_differ(tmp_path):
     c = build_synthetic(
         tmp_path,
         [
-            synthetic_artist(
-                "same-a", "1985", None, members=[{"mbid": "shared-same"}], genres=GENRE
-            ),
-            synthetic_artist(
-                "same-b", "1985", None, members=[{"mbid": "shared-same"}], genres=GENRE
-            ),
-            synthetic_artist(
-                "early", "1980", None, members=[{"mbid": "shared-diff"}], genres=GENRE
-            ),
-            synthetic_artist("late", "1990", None, members=[{"mbid": "shared-diff"}], genres=GENRE),
+            synthetic_artist(SAME_A, "1985", None, members=[{"mbid": "shared-same"}], genres=GENRE),
+            synthetic_artist(SAME_B, "1985", None, members=[{"mbid": "shared-same"}], genres=GENRE),
+            synthetic_artist(EARLY, "1980", None, members=[{"mbid": "shared-diff"}], genres=GENRE),
+            synthetic_artist(LATE, "1990", None, members=[{"mbid": "shared-diff"}], genres=GENRE),
         ],
     )
     same_a_i, same_b_i = (
         c.execute("SELECT i FROM frieze WHERE mbid = ?", [mbid]).fetchone()[0]
-        for mbid in ("same-a", "same-b")
+        for mbid in (SAME_A, SAME_B)
     )
     early_i, late_i = (
         c.execute("SELECT i FROM frieze WHERE mbid = ?", [mbid]).fetchone()[0]
-        for mbid in ("early", "late")
+        for mbid in (EARLY, LATE)
     )
     assert (
         c.execute(
