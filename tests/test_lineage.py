@@ -1,3 +1,49 @@
+from conftest import build_synthetic, synthetic_artist
+
+GENRE = [{"mbid": "g-lineage", "name": "lineage", "votes": 1}]
+
+
+def test_lineage_orientation_requires_the_years_to_differ(tmp_path):
+    # No same-year pair of the fixtures shares a musician, so the fixture-based
+    # test below cannot tell `a.y0 < b.y0` from `a.y0 <= b.y0`. This scenario
+    # forces both shapes into one dump: a same-year pair sharing a musician,
+    # which must produce no edge, and a different-year pair sharing another
+    # musician, which must produce exactly one, oriented from the earlier band.
+    c = build_synthetic(
+        tmp_path,
+        [
+            synthetic_artist(
+                "same-a", "1985", None, members=[{"mbid": "shared-same"}], genres=GENRE
+            ),
+            synthetic_artist(
+                "same-b", "1985", None, members=[{"mbid": "shared-same"}], genres=GENRE
+            ),
+            synthetic_artist(
+                "early", "1980", None, members=[{"mbid": "shared-diff"}], genres=GENRE
+            ),
+            synthetic_artist("late", "1990", None, members=[{"mbid": "shared-diff"}], genres=GENRE),
+        ],
+    )
+    same_a_i, same_b_i = (
+        c.execute("SELECT i FROM frieze WHERE mbid = ?", [mbid]).fetchone()[0]
+        for mbid in ("same-a", "same-b")
+    )
+    early_i, late_i = (
+        c.execute("SELECT i FROM frieze WHERE mbid = ?", [mbid]).fetchone()[0]
+        for mbid in ("early", "late")
+    )
+    assert (
+        c.execute(
+            "SELECT count(*) FROM lineage WHERE (src, dst) IN ((?, ?), (?, ?))",
+            [same_a_i, same_b_i, same_b_i, same_a_i],
+        ).fetchone()[0]
+        == 0
+    )
+    assert c.execute(
+        "SELECT src, dst FROM lineage WHERE src = ? OR dst = ?", [early_i, early_i]
+    ).fetchall() == [(early_i, late_i)]
+
+
 def test_lineage_edges_point_forward_in_time(con):
     backwards = con.execute("""
         SELECT count(*) FROM lineage l

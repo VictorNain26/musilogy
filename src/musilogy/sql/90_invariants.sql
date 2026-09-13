@@ -247,10 +247,11 @@ CREATE OR REPLACE VIEW frieze_year_unencodable AS
   SELECT i FROM frieze WHERE y0 < 0 OR y0 > 32767 OR y1 < 0 OR y1 > 32767 OR y1 < y0;
 -- Both ends must be drawable rows of `frieze`, or the published edge points at
 -- a row index the blob does not contain.
+-- NOT EXISTS, not NOT IN: see album_without_band above, same NULL trap.
 CREATE OR REPLACE VIEW lineage_endpoint_missing AS
-  SELECT src AS i FROM lineage WHERE src NOT IN (SELECT i FROM frieze)
+  SELECT l.src AS i FROM lineage l WHERE NOT EXISTS (SELECT 1 FROM frieze f WHERE f.i = l.src)
   UNION ALL
-  SELECT dst FROM lineage WHERE dst NOT IN (SELECT i FROM frieze);
+  SELECT l.dst FROM lineage l WHERE NOT EXISTS (SELECT 1 FROM frieze f WHERE f.i = l.dst);
 CREATE OR REPLACE VIEW lineage_not_oriented AS
   SELECT l.src FROM lineage l
   JOIN frieze s ON s.i = l.src JOIN frieze t ON t.i = l.dst
