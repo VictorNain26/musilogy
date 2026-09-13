@@ -245,16 +245,52 @@ CREATE OR REPLACE VIEW frieze_index_broken AS
 -- Years are written into 15 bits of a u16, the top bit carrying a flag.
 CREATE OR REPLACE VIEW frieze_year_unencodable AS
   SELECT i FROM frieze WHERE y0 < 0 OR y0 > 32767 OR y1 < 0 OR y1 > 32767 OR y1 < y0;
--- Both ends must be drawable rows of `frieze`, or the published edge points at
--- a row index the blob does not contain.
--- NOT EXISTS, not NOT IN: see album_without_band above, same NULL trap.
-CREATE OR REPLACE VIEW lineage_endpoint_missing AS
-  SELECT l.src AS i FROM lineage l WHERE NOT EXISTS (SELECT 1 FROM frieze f WHERE f.i = l.src)
-  UNION ALL
-  SELECT l.dst FROM lineage l WHERE NOT EXISTS (SELECT 1 FROM frieze f WHERE f.i = l.dst);
-CREATE OR REPLACE VIEW lineage_not_oriented AS
-  SELECT l.src FROM lineage l
-  JOIN frieze s ON s.i = l.src JOIN frieze t ON t.i = l.dst
-  WHERE s.y0 >= t.y0;
-CREATE OR REPLACE VIEW lineage_duplicate AS
-  SELECT src, dst FROM lineage GROUP BY src, dst HAVING count(*) > 1;
+-- The twin frieze_population_mismatch does not have, same reasoning as
+-- density_missing_cell above: that view iterates over the rows frieze carries
+-- and says nothing about the bands that vanished from it. A band silently
+-- dropped keeps every published artifact self-consistent — row_number()
+-- renumbers densely over the reduced population and the three blobs stay
+-- mutually aligned — while the delivery ships a narrower population than
+-- density. Enumerated from bands and genres, the only side that knows which
+-- bands the frieze owes a row to.
+CREATE OR REPLACE VIEW frieze_missing_band AS
+  SELECT DISTINCT b.mbid
+  FROM bands b, UNNEST(b.genres) AS t(g)
+  JOIN genres gx ON gx.genre_mbid = t.g.mbid
+  WHERE b.type = 'Group' AND b.y0 IS NOT NULL AND gx.density_eligible
+    AND NOT EXISTS (SELECT 1 FROM frieze f WHERE f.mbid = b.mbid);
+-- write_frieze_ids packs each mbid into a 16-byte record with
+-- bytes.fromhex, which rejects a non-hex character but accepts any even
+-- length: a mbid one character short writes a shorter record and slides every
+-- subsequent offset of frieze_ids.bin with no trace. The canonical 36-char
+-- form is spelled out here rather than checked as a length, so a hyphen in
+-- the wrong place is caught too.
+CREATE OR REPLACE VIEW frieze_mbid_unencodable AS
+  SELECT i FROM frieze
+  WHERE mbid IS NULL
+     OR NOT regexp_matches(mbid,
+          '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+-- Replaces lineage_endpoint_missing, lineage_not_oriented and
+-- lineage_duplicate, none of which could fire: src/dst ARE frieze.i by
+-- construction, the orientation test was the exact negation of 85_lineage.sql's
+-- own WHERE over the same rows of the same table, and its GROUP BY already
+-- guaranteed uniqueness. This one rebuilds the edge set from `members` and
+-- `bands.y0` and reports the symmetric difference, the idiom of
+-- genre_unreliable_recomputed. It joins through frieze.mbid, never frieze.i:
+-- reusing the published index would make a misassigned `i` agree with itself.
+CREATE OR REPLACE VIEW lineage_mismatch AS
+  WITH edge AS (
+    SELECT fa.i AS src, fb.i AS dst,
+           least(count(DISTINCT ma.person_mbid), 255)::UTINYINT AS shared
+    FROM members ma
+    JOIN members mb ON mb.person_mbid = ma.person_mbid
+    JOIN frieze fa ON fa.mbid = ma.band_mbid
+    JOIN frieze fb ON fb.mbid = mb.band_mbid
+    JOIN bands ba ON ba.mbid = fa.mbid
+    JOIN bands bb ON bb.mbid = fb.mbid
+    WHERE ba.y0 < bb.y0
+    GROUP BY fa.i, fb.i
+  )
+  SELECT coalesce(e.src, l.src) AS src, coalesce(e.dst, l.dst) AS dst
+  FROM edge e FULL OUTER JOIN lineage l ON l.src = e.src AND l.dst = e.dst
+  WHERE e.src IS NULL OR l.src IS NULL OR e.shared IS DISTINCT FROM l.shared;
