@@ -63,6 +63,17 @@ DEMO_BEFORE_STUDIO = (3_174, 2_144, 3.0)
 # album: the reason a live date is not evidence of activity.
 LIVE_LONG_AFTER_LAST_STUDIO = 710
 BANDS_WITHOUT_ALBUM = 404_925
+# The frieze projection and its lineage graph. FRIEZE is density's population
+# seen band by band: if it diverges from the density population, one of the two
+# is wrong, and the frieze_population_mismatch invariant says which.
+# LINEAGE and LINEAGE_STRONG differ from the design spec's pre-implementation
+# estimate (37 322 and 5 340): the frieze eligibility fix in fa35878 (coalesced
+# y_end_declared, dropped dead genre guard, covered genre_ids) changed which
+# bands qualify without moving the total away from 84 262, and lineage depends
+# on that exact set through shared members, not on the count alone.
+FRIEZE = 84_262
+LINEAGE = 37_136
+LINEAGE_STRONG = 5_311
 WORK = work_dir(REFERENCE_DUMP)
 
 
@@ -186,3 +197,15 @@ def test_reference_dump_matches_the_baseline():
     ).fetchone()
     assert row is not None
     assert row[0] == BANDS_WITHOUT_ALBUM
+
+    row = con.execute("SELECT count(*) FROM frieze").fetchone()
+    assert row is not None
+    assert row[0] == FRIEZE
+
+    row = con.execute("SELECT count(*) FROM lineage").fetchone()
+    assert row is not None
+    assert row[0] == LINEAGE
+
+    row = con.execute("SELECT count(*) FROM lineage WHERE shared >= 2").fetchone()
+    assert row is not None
+    assert row[0] == LINEAGE_STRONG
