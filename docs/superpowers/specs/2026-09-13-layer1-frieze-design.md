@@ -356,6 +356,29 @@ produit par la suite Python. Le rendu lui-même n'est pas testé pixel à pixel 
 ce qui est testé est ce qui se trompe — la projection année vers pixel, la
 sélection d'un genre, et la règle de fin inconnue.
 
+**Et des tests de bout en bout, dans un vrai navigateur**, parce que les
+défaillances les plus coûteuses de cette architecture ne se manifestent nulle
+part ailleurs. Un blob dont une section est mal alignée lève une `RangeError` au
+moment où le navigateur construit le `TypedArray`, jamais avant. Un décalage
+d'un rang entre `frieze.bin` et `frieze_ids.bin` affiche les mauvais noms sans
+rien casser. Aucune suite Python ni aucun test de fonction pure ne voit ces
+deux-là.
+
+Ce qui est vérifié de bout en bout : la page charge les blobs réels sans une
+seule erreur console ; le nombre de groupes rendus correspond au contenu de la
+fenêtre temporelle ; chercher un nom connu le trouve, et le sélectionner
+recentre la frise sur son `y0` avec ses contemporains autour ; sélectionner un
+groupe relié allume exactement le nombre d'arcs que `lineage` porte pour lui.
+
+Cela impose une contrainte de conception, à tenir dès la première version :
+**la page expose son état** — fenêtre courante, identifiants des groupes rendus,
+sélection, arcs actifs — sur un objet inspectable. Un canvas ne donne rien à
+lire à un test, et un état non exposé rend tout ce qui précède invérifiable.
+
+Ce qui n'est pas testé : les pixels. Une comparaison d'images casse au premier
+changement de police ou d'anticrénelage et coûte plus qu'elle ne rapporte. Ce
+sont des comportements observables qu'on vérifie, pas un rendu.
+
 Les blobs étant versionnés, la suite rapide doit vérifier qu'ils correspondent
 au code : elle compare leur SHA-256 à l'`output_sha256` du manifeste commité.
 Sans ce contrôle, un blob commité peut diverger du pipeline sans que rien ne le
