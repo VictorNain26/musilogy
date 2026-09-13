@@ -645,3 +645,9 @@ def test_corrections_invalid_survives_a_null_mbid_in_raw_artists(con):
         )
         violations = dict(check_invariants(con, SQL))
     assert violations.get("corrections_invalid") == 1
+
+
+def test_frieze_invariants_are_empty_on_the_fixtures(con):
+    violations = dict(check_invariants(con, SQL_DIR))
+    for name in ("frieze_population_mismatch", "frieze_index_broken", "frieze_year_unencodable"):
+        assert name not in violations

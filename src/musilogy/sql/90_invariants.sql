@@ -226,3 +226,22 @@ CREATE OR REPLACE VIEW band_unexpected_type AS
 -- today, which is exactly when the contract is cheap to state.
 CREATE OR REPLACE VIEW corrections_duplicate AS
   SELECT mbid, field FROM corrections GROUP BY mbid, field HAVING count(*) > 1;
+-- frieze is density's population seen band by band: a band in one and not the
+-- other means the aggregate view and the detailed view disagree on what exists.
+CREATE OR REPLACE VIEW frieze_population_mismatch AS
+  SELECT f.mbid FROM frieze f
+  WHERE NOT EXISTS (
+    SELECT 1 FROM bands b, UNNEST(b.genres) AS t(g)
+    JOIN genres gx ON gx.genre_mbid = t.g.mbid
+    WHERE b.mbid = f.mbid AND gx.density_eligible);
+-- The row index is the identity the blobs publish: a gap or a duplicate
+-- silently shifts every band the frieze draws.
+CREATE OR REPLACE VIEW frieze_index_broken AS
+  SELECT i FROM frieze GROUP BY i HAVING count(*) > 1
+  UNION ALL
+  SELECT 1 WHERE (SELECT count(*) FROM frieze) <> (SELECT count(DISTINCT i) FROM frieze)
+  UNION ALL
+  SELECT 1 WHERE (SELECT max(i) + 1 FROM frieze) <> (SELECT count(*) FROM frieze);
+-- Years are written into 15 bits of a u16, the top bit carrying a flag.
+CREATE OR REPLACE VIEW frieze_year_unencodable AS
+  SELECT i FROM frieze WHERE y0 < 0 OR y0 > 32767 OR y1 < 0 OR y1 > 32767 OR y1 < y0;
