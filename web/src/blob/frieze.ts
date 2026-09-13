@@ -17,7 +17,7 @@ export interface Frieze {
 }
 
 export function readFrieze(buffer: ArrayBuffer): Frieze {
-  const view = readHeader(buffer, "frieze.bin", MAGIC);
+  const view = readHeader(buffer, "frieze.bin", MAGIC, 16);
 
   const count = view.getUint32(8, true);
   const pairs = view.getUint32(12, true);

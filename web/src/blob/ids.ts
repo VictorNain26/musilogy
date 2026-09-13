@@ -10,7 +10,7 @@ export interface FriezeIds {
 }
 
 export function readFriezeIds(buffer: ArrayBuffer): FriezeIds {
-  const view = readHeader(buffer, "frieze_ids.bin", MAGIC);
+  const view = readHeader(buffer, "frieze_ids.bin", MAGIC, HEADER);
 
   const count = view.getUint32(8, true);
   const expectedSize = HEADER + 16 * count;

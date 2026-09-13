@@ -28,6 +28,16 @@ describe("readFriezeIds", () => {
     expect(() => readFriezeIds(buffer)).toThrow(/MID1/);
   });
 
+  it("refuses a buffer too short to hold a frieze_ids header", () => {
+    const buffer = new ArrayBuffer(15);
+    const view = new Uint8Array(buffer);
+    view.set([0x4d, 0x49, 0x44, 0x31]);
+    new DataView(buffer).setUint16(4, 1, true);
+    expect(() => readFriezeIds(buffer)).toThrow(
+      /frieze_ids.bin: expected a header of at least 16 bytes, got 15/,
+    );
+  });
+
   it("refuses a truncated frieze_ids blob", () => {
     const bytes = new Uint8Array(readFileSync(new URL("fixtures/frieze_ids.bin", import.meta.url)));
     const full = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);

@@ -24,6 +24,16 @@ describe("readLineage", () => {
     expect(() => readLineage(buffer)).toThrow(/MLN1/);
   });
 
+  it("refuses a buffer too short to hold a lineage header", () => {
+    const buffer = new ArrayBuffer(11);
+    const view = new Uint8Array(buffer);
+    view.set([0x4d, 0x4c, 0x4e, 0x31]);
+    new DataView(buffer).setUint16(4, 1, true);
+    expect(() => readLineage(buffer)).toThrow(
+      /lineage.bin: expected a header of at least 12 bytes, got 11/,
+    );
+  });
+
   it("refuses a truncated lineage blob", async () => {
     const bytes = new Uint8Array(readFileSync(new URL("fixtures/lineage.bin.gz", import.meta.url)));
     const full = await inflateIfGzipped(bytes);

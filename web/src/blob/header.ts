@@ -1,9 +1,16 @@
 const decoder = new TextDecoder();
 const VERSION = 1;
 
-export function readHeader(buffer: ArrayBuffer, label: string, magic: string): DataView {
-  if (buffer.byteLength < 6) {
-    throw new Error(`${label}: expected at least 6 bytes of header, got ${buffer.byteLength}`);
+export function readHeader(
+  buffer: ArrayBuffer,
+  label: string,
+  magic: string,
+  headerSize: number,
+): DataView {
+  if (buffer.byteLength < headerSize) {
+    throw new Error(
+      `${label}: expected a header of at least ${headerSize} bytes, got ${buffer.byteLength}`,
+    );
   }
   const view = new DataView(buffer);
   const got = decoder.decode(new Uint8Array(buffer, 0, 4));

@@ -77,6 +77,16 @@ describe("readFrieze", () => {
     expect(() => readFrieze(buffer)).toThrow(/genres section has 99 pairs, offsets end at 130/);
   });
 
+  it("refuses a buffer too short to hold a frieze header", () => {
+    const buffer = new ArrayBuffer(15);
+    const view = new Uint8Array(buffer);
+    view.set([0x4d, 0x46, 0x5a, 0x31]);
+    new DataView(buffer).setUint16(4, 1, true);
+    expect(() => readFrieze(buffer)).toThrow(
+      /frieze.bin: expected a header of at least 16 bytes, got 15/,
+    );
+  });
+
   it("refuses a blob truncated before the names section", async () => {
     const bytes = new Uint8Array(readFileSync(new URL("fixtures/frieze.bin.gz", import.meta.url)));
     const buffer = await inflateIfGzipped(bytes);

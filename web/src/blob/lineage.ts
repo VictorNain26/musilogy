@@ -10,7 +10,7 @@ export interface Lineage {
 }
 
 export function readLineage(buffer: ArrayBuffer): Lineage {
-  const view = readHeader(buffer, "lineage.bin", MAGIC);
+  const view = readHeader(buffer, "lineage.bin", MAGIC, 12);
 
   const count = view.getUint32(8, true);
   const expectedSize = 12 + 9 * count;
