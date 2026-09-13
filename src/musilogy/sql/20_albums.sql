@@ -1,4 +1,4 @@
--- R3. Secondary types are empty or drawn from {Soundtrack, Demo}. The
+-- Secondary types are empty or drawn from {Soundtrack, Demo}. The
 -- +/-5-year window around y0 that used to gate this table is gone: y0 is now
 -- partly derived from albums (30_bands_lifespan.sql), so it cannot be used
 -- here without creating a cycle.

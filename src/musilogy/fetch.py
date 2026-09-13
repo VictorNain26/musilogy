@@ -1,4 +1,4 @@
-"""Téléchargement et vérification des archives MusicBrainz."""
+"""Downloads and verifies the MusicBrainz archives."""
 
 from __future__ import annotations
 

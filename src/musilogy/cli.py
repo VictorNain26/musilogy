@@ -1,9 +1,10 @@
-"""Point d'entrée CLI : run, make-fixtures."""
+"""CLI entry point: run, make-fixtures."""
 
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import duckdb
 
@@ -20,7 +21,7 @@ from musilogy.paths import (
     out_dir,
     work_dir,
 )
-from musilogy.publish import publish
+from musilogy.publish import extraction_matches_rows_loaded, publish
 
 SUMS_PATH = REFERENCE_DIR / f"{DUMP}.SHA256SUMS"
 WORK_DIR = work_dir(DUMP)
@@ -60,8 +61,9 @@ WITNESSES = [
 
 
 def fetch_and_extract() -> None:
-    """§5.1 fetch → extract. Rejouable : fetch_dump ne retélécharge pas une
-    archive déjà vérifiée, extract réécrit sa sortie à chaque appel."""
+    """fetch → extract. Replayable: fetch_dump does not re-download an
+    archive it has already verified, and extract rewrites its output on every
+    call."""
     artist_archive = fetch_dump(DUMP, "artist.tar.xz", RAW_DIR, SUMS_PATH)
     rg_archive = fetch_dump(DUMP, "release-group.tar.xz", RAW_DIR, SUMS_PATH)
     artists_kept, artists_dropped = extract(artist_archive, reduce_artist, ARTISTS_JSONL)
@@ -80,8 +82,25 @@ def fetch_and_extract() -> None:
     )
 
 
+def _stop_on_extraction_mismatch(con: duckdb.DuckDBPyConnection, extraction: Path) -> None:
+    """Called before publish(), never after: a run that wrote its Parquet and
+    only then failed would have replaced a sound delivery with a truncated
+    one, and a consumer reading the tables without the manifest could not tell.
+    Nothing is written here, so the previous publication survives a refusal.
+
+    `is False`, never a truthiness test: None says the sidecar is absent,
+    unreadable or missing a count, which is silence and not agreement — every
+    extraction predating the sidecar reports exactly that. False says the build
+    loaded something other than what the extraction wrote, so the tables are
+    narrower than their source and nothing downstream can tell."""
+    if extraction_matches_rows_loaded(con, extraction) is False:
+        raise SystemExit(
+            f"extraction mismatch: {extraction} disagrees with the rows loaded, nothing published"
+        )
+
+
 def run() -> None:
-    """Exécution complète : fetch → extract (si besoin) → transform → validate → publish."""
+    """Full execution: fetch → extract (when needed) → transform → validate → publish."""
     if not ARTISTS_JSONL.exists() or not RELEASE_GROUPS_JSONL.exists():
         fetch_and_extract()
 
@@ -92,12 +111,15 @@ def run() -> None:
     if violations:
         raise SystemExit(f"invariants violated: {violations}")
 
-    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV, WORK_DIR / "extraction.json")
+    extraction = WORK_DIR / "extraction.json"
+    _stop_on_extraction_mismatch(con, extraction)
+
+    manifest = publish(con, out_dir(DUMP), DUMP, CORRECTIONS_CSV, extraction)
     print(manifest["counts"])
 
 
 def make_fixtures() -> None:
-    """Extrait les enregistrements témoins des extractions complètes."""
+    """Extracts the witness records from the full extractions."""
     work = WORK_DIR
     out = FIXTURES_DIR
     out.mkdir(parents=True, exist_ok=True)

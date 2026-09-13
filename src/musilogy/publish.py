@@ -1,4 +1,4 @@
-"""Écrit les livrables : Parquet d'archive, JSON colonnaire pour le web, manifeste."""
+"""Writes the deliverables: archival Parquet, columnar JSON for the web, manifest."""
 
 from __future__ import annotations
 
@@ -130,6 +130,24 @@ def _extraction_matches_rows_loaded(
     )
 
 
+INPUT_TABLES = ("raw_artists", "raw_release_groups")
+
+
+def input_rows_loaded(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+    return {table: _count(con, table) for table in INPUT_TABLES}
+
+
+def extraction_matches_rows_loaded(
+    con: duckdb.DuckDBPyConnection, extraction: Path | None
+) -> bool | None:
+    """Public because the run has to ask before anything is written: publishing
+    first and failing after would replace a sound delivery with a truncated
+    one, and a consumer reading the Parquet without the manifest would never
+    know. The manifest reports the same verdict through the same two
+    functions, so the two answers cannot drift."""
+    return _extraction_matches_rows_loaded(_extraction(extraction), input_rows_loaded(con))
+
+
 PARAMETERS = ("dump_year", "min_year", "multi_artist_drop_limit", "min_candidate_credits")
 
 
@@ -205,7 +223,7 @@ def publish(
         if stale.name not in written:
             stale.unlink()
 
-    rows_loaded = {table: _count(con, table) for table in ("raw_artists", "raw_release_groups")}
+    rows_loaded = input_rows_loaded(con)
     extraction_record = _extraction(extraction)
 
     manifest = {

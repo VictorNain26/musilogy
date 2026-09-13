@@ -1,4 +1,4 @@
-"""Chemins ancrés sur le paquet, jamais sur le cwd de l'appelant."""
+"""Paths anchored on the package, never on the caller's cwd."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Projection en flux des dumps JSON MusicBrainz. Aucune règle métier ici."""
+"""Streaming projection of the MusicBrainz JSON dumps. No business rule here."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def reduce_release_group(rec: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def iter_records(archive: Path) -> Iterator[dict[str, Any]]:
-    """Parcourt les lignes JSON de mbdump/* sans jamais écrire le tar décompressé."""
+    """Walks the JSON lines of mbdump/* without ever writing the decompressed tar."""
     skipped = 0
     with lzma.open(archive) as xz, tarfile.open(fileobj=xz, mode="r|") as tar:
         for member in tar:
@@ -76,7 +76,7 @@ def iter_records(archive: Path) -> Iterator[dict[str, Any]]:
                     skipped += 1
                     continue
     if skipped:
-        logger.warning("%s : %d ligne(s) JSON malformée(s) ignorée(s)", archive, skipped)
+        logger.warning("%s: %d malformed JSON line(s) ignored", archive, skipped)
 
 
 def extract(

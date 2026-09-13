@@ -1,4 +1,4 @@
--- R7. Only bands with a non-NULL y0 are eligible for presence. y_end already
+-- Only bands with a non-NULL y0 are eligible for presence. y_end already
 -- carries its own declared/last-album fallback (30_bands_lifespan.sql): this
 -- table only clamps it to the dump year.
 CREATE OR REPLACE TABLE presence AS
@@ -9,7 +9,8 @@ SELECT
 FROM bands
 WHERE y0 IS NOT NULL;
 
--- Published on bands: without it, layer 1 would have to reimplement R7.
+-- Published on bands: without it, layer 1 would have to reimplement the
+-- presence rule.
 ALTER TABLE bands ADD COLUMN y_presence_end INTEGER;
 UPDATE bands SET y_presence_end = (
   SELECT p.y_presence_end FROM presence p WHERE p.mbid = bands.mbid

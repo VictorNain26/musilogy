@@ -1,4 +1,4 @@
--- R7, aggregate. Deliberately narrower than the population: only bands of
+-- Aggregate. Deliberately narrower than the population: only bands of
 -- type Group, with a non-NULL y0, that carry at least one genre. Per-genre
 -- totals do not add up: a band counts in each of them.
 CREATE OR REPLACE TABLE density AS
