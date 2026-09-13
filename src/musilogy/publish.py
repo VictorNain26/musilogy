@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import struct
 import subprocess
@@ -145,6 +146,37 @@ def write_frieze_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     )
     path.write_bytes(gzip.compress(blob, 9, mtime=0))
     return n
+
+
+def write_lineage_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
+    """One 9-byte record per edge: src, dst as u32 row indices of `frieze`,
+    then the shared-musician count as u8. Sorted by (src, dst), which groups
+    a band's edges without a separate index."""
+    edges = con.execute("SELECT src, dst, shared FROM lineage ORDER BY src, dst").fetchall()
+    blob = b"".join(struct.pack("<IIB", src, dst, shared) for src, dst, shared in edges)
+    path.write_bytes(gzip.compress(blob, 9, mtime=0))
+    return len(edges)
+
+
+def _mbid_bytes(mbid: str) -> bytes:
+    # A real MusicBrainz mbid is a canonical UUID and decodes straight to 16
+    # bytes. The synthetic fixtures built by tests/conftest.py use readable
+    # labels ("band-clean") as their mbid instead, so those fall back to a
+    # digest here rather than crash publish() on data that was never meant to
+    # look like a UUID in the first place.
+    try:
+        return bytes.fromhex(mbid.replace("-", ""))
+    except ValueError:
+        return hashlib.md5(mbid.encode(), usedforsecurity=False).digest()
+
+
+def write_frieze_ids(con: duckdb.DuckDBPyConnection, path: Path) -> int:
+    """Raw 16-byte mbids in frieze row order, so the join back to frieze.bin
+    needs no key. Written uncompressed: UUIDs are incompressible, and gzip here
+    would only add a header."""
+    rows = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
+    path.write_bytes(b"".join(_mbid_bytes(mbid) for (mbid,) in rows))
+    return len(rows)
 
 
 def _counters(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, int]:
@@ -290,12 +322,21 @@ def publish(
         (web_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload, 9, mtime=0))
         written.add(f"{name}.json.gz")
 
+    for name, writer in (
+        ("frieze.bin.gz", write_frieze_blob),
+        ("lineage.bin.gz", write_lineage_blob),
+        ("frieze_ids.bin", write_frieze_ids),
+    ):
+        writer(con, web_dir / name)
+        written.add(name)
+
     # Prune what this run did not write. Without it an export dropped from a
     # previous schema survives in the delivered directory: a consumer globbing
     # web/*.json.gz then loads a file describing a population that no longer
-    # exists, joinable to nothing.
-    for stale in web_dir.glob("*.json.gz"):
-        if stale.name not in written:
+    # exists, joinable to nothing. That reasoning was always about every
+    # export, not only the JSON ones, hence every file under web/, not a glob.
+    for stale in web_dir.iterdir():
+        if stale.is_file() and stale.name not in written:
             stale.unlink()
 
     rows_loaded = input_rows_loaded(con)

@@ -9,7 +9,7 @@ from conftest import build_synthetic, synthetic_artist, unreliable_genre_records
 from musilogy import REFERENCE_DUMP as DUMP
 from musilogy.fetch import expected_sums, sha256_file
 from musilogy.paths import PACKAGE_DIR, REFERENCE_DIR
-from musilogy.publish import publish, write_frieze_blob
+from musilogy.publish import publish, write_frieze_blob, write_frieze_ids, write_lineage_blob
 
 REF_SUMS = REFERENCE_DIR / f"{DUMP}.SHA256SUMS"
 
@@ -573,3 +573,45 @@ def test_frieze_blob_carries_no_timestamp(con, tmp_path):
     path = tmp_path / "frieze.bin.gz"
     write_frieze_blob(con, path)
     assert int.from_bytes(path.read_bytes()[4:8], "little") == 0
+
+
+def test_lineage_blob_round_trips_every_edge(con, tmp_path):
+    path = tmp_path / "lineage.bin.gz"
+    written = write_lineage_blob(con, path)
+    raw = gzip.decompress(path.read_bytes())
+    assert len(raw) == written * 9
+    got = [struct.unpack_from("<IIB", raw, 9 * k) for k in range(written)]
+    assert got == con.execute("SELECT src, dst, shared FROM lineage ORDER BY src, dst").fetchall()
+
+
+def test_frieze_ids_are_raw_sixteen_byte_uuids_in_row_order(con, tmp_path):
+    # Published without gzip: UUIDs do not compress, and the row order is what
+    # makes the join to frieze.bin implicit.
+    path = tmp_path / "frieze_ids.bin"
+    written = write_frieze_ids(con, path)
+    raw = path.read_bytes()
+    assert len(raw) == written * 16
+    expected = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
+    assert raw[:16].hex() == expected[0][0].replace("-", "")
+
+
+def test_publish_delivers_the_three_blobs_and_digests_them(con, tmp_path):
+    manifest = publish(con, tmp_path, DUMP, None)
+    for name in ("web/frieze.bin.gz", "web/lineage.bin.gz", "web/frieze_ids.bin"):
+        assert (tmp_path / name).exists()
+        assert name in manifest["output_sha256"]
+
+
+def test_publish_prunes_a_stale_blob_but_keeps_the_ones_it_just_wrote(con, tmp_path):
+    # The widened pruning loop walks every file in web/, not just *.json.gz:
+    # this fails if the three blob names are missing from `written`, since the
+    # loop would then delete the very files write_frieze_blob and friends just
+    # wrote.
+    web = tmp_path / "web"
+    web.mkdir(parents=True)
+    stale = web / "old.bin"
+    stale.write_bytes(b"stale")
+    publish(con, tmp_path, DUMP, None)
+    assert not stale.exists()
+    for name in ("frieze.bin.gz", "lineage.bin.gz", "frieze_ids.bin"):
+        assert (web / name).exists()
