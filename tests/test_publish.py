@@ -6,6 +6,7 @@ import subprocess
 import pytest
 from conftest import build_synthetic, synthetic_artist, unreliable_genre_records
 
+import musilogy.publish
 from musilogy import REFERENCE_DUMP as DUMP
 from musilogy.fetch import expected_sums, sha256_file
 from musilogy.paths import PACKAGE_DIR, REFERENCE_DIR
@@ -621,6 +622,28 @@ def test_frieze_ids_are_raw_sixteen_byte_uuids_in_row_order(con, tmp_path):
     got = [raw[16 * (k + 1) : 16 * (k + 2)].hex() for k in range(written)]
     expected = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
     assert got == [mbid.replace("-", "") for (mbid,) in expected]
+
+
+def test_manifest_counts_the_blobs_from_what_was_written(con, tmp_path):
+    manifest = publish(con, tmp_path, DUMP, None)
+    assert manifest["counts"]["frieze"] == con.execute("SELECT count(*) FROM frieze").fetchone()[0]
+    assert (
+        manifest["counts"]["lineage"] == con.execute("SELECT count(*) FROM lineage").fetchone()[0]
+    )
+
+
+def test_publish_refuses_to_deliver_blobs_that_disagree_on_the_band_count(
+    con, tmp_path, monkeypatch
+):
+    # frieze.bin.gz and frieze_ids.bin are joined by row position and nothing
+    # else, so a count that drifts between the two shifts every name after the
+    # divergence with no other symptom. The serialisers' return values are the
+    # only place that can be seen, which is why they are no longer discarded.
+    monkeypatch.setattr(
+        musilogy.publish, "write_frieze_ids", lambda con, path: write_frieze_ids(con, path) - 1
+    )
+    with pytest.raises(ValueError, match=r"frieze_ids\.bin"):
+        publish(con, tmp_path, DUMP, None)
 
 
 def test_publish_delivers_the_three_blobs_and_digests_them(con, tmp_path):

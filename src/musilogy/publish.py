@@ -339,13 +339,18 @@ def publish(
         (web_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload, 9, mtime=0))
         written.add(f"{name}.json.gz")
 
-    for name, writer in (
-        ("frieze.bin.gz", write_frieze_blob),
-        ("lineage.bin.gz", write_lineage_blob),
-        ("frieze_ids.bin", write_frieze_ids),
-    ):
-        writer(con, web_dir / name)
-        written.add(name)
+    # The counts come back from the serialisers rather than from a fresh
+    # SELECT: what the manifest reports is then what the bytes contain. The two
+    # band counts are written by two independent queries over `frieze`, and
+    # frieze_ids.bin is joined to frieze.bin by row position alone — a
+    # disagreement means every name after the first divergence is misattributed,
+    # which nothing downstream could detect.
+    counts["frieze"] = write_frieze_blob(con, web_dir / "frieze.bin.gz")
+    counts["lineage"] = write_lineage_blob(con, web_dir / "lineage.bin.gz")
+    n_ids = write_frieze_ids(con, web_dir / "frieze_ids.bin")
+    written |= {"frieze.bin.gz", "lineage.bin.gz", "frieze_ids.bin"}
+    if n_ids != counts["frieze"]:
+        raise ValueError(f"frieze.bin.gz holds {counts['frieze']} bands, frieze_ids.bin {n_ids}")
 
     # Prune what this run did not write. Without it an export dropped from a
     # previous schema survives in the delivered directory: a consumer globbing
