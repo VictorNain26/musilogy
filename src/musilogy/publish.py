@@ -38,6 +38,20 @@ BANDS_WEB_COLUMNS = [
     "begin_area",
     "genres",
 ]
+# A delivery has to come out in a fixed order, or the same code on the same
+# extraction writes different bytes: the tables are built by parallel joins and
+# aggregates, so their insertion order is whatever the threads produced. Each
+# key below is total — the uniqueness invariants of 90_invariants.sql are what
+# make it one. NULLS LAST is spelled out because members' key is NULL on most
+# of its rows and DuckDB's placement is a session setting (default_null_order),
+# not a property of the query.
+ORDER_BY = {
+    "bands": "mbid",
+    "albums": "rg_mbid",
+    "genres": "genre_mbid",
+    "density": "genre_mbid, year",
+    "members": "band_mbid, person_mbid, y_begin NULLS LAST, y_end NULLS LAST",
+}
 WEB_COLUMNS = {
     # density_eligible carries the exclusion rule of 60_density.sql itself:
     # without it a web-only consumer cannot apply the rule, recomputes density
@@ -74,7 +88,9 @@ def _git_sha() -> str:
 
 
 def _columnar(con: duckdb.DuckDBPyConnection, table: str, columns: list[str]) -> dict[str, Any]:
-    rows = con.execute(f"SELECT {', '.join(columns)} FROM {table}").fetchall()
+    rows = con.execute(
+        f"SELECT {', '.join(columns)} FROM {table} ORDER BY {ORDER_BY[table]}"
+    ).fetchall()
     return {c: [r[i] for r in rows] for i, c in enumerate(columns)}
 
 
@@ -179,7 +195,8 @@ def publish(
     counts: dict[str, int] = {}
     for name in TABLES:
         con.execute(
-            f"COPY {name} TO ? (FORMAT parquet, COMPRESSION zstd)",
+            f"COPY (SELECT * FROM {name} ORDER BY {ORDER_BY[name]}) TO ?"
+            " (FORMAT parquet, COMPRESSION zstd)",
             [(out_dir / f"{name}.parquet").as_posix()],
         )
         counts[name] = _count(con, name)
@@ -191,11 +208,14 @@ def publish(
         if stale.stem not in TABLES:
             stale.unlink()
 
+    # mtime=0 rather than the default: gzip stamps the current time into its
+    # header, so the same payload compressed twice gives different bytes and no
+    # consumer can tell an unchanged export from a new one by its digest.
     for table, columns in WEB_COLUMNS.items():
         payload = json.dumps(
             _columnar(con, table, columns), ensure_ascii=False, separators=(",", ":")
         ).encode()
-        (web_dir / f"{table}.json.gz").write_bytes(gzip.compress(payload, 9))
+        (web_dir / f"{table}.json.gz").write_bytes(gzip.compress(payload, 9, mtime=0))
         written.add(f"{table}.json.gz")
 
     # Split in two: layer 1's frieze only needs the timeline-eligible bands
@@ -206,13 +226,15 @@ def publish(
         ("bands_rest", "y0 IS NULL"),
     ):
         columns_sql = ", ".join(BANDS_WEB_COLUMNS)
-        rows = con.execute(f"SELECT {columns_sql} FROM bands WHERE {condition}").fetchall()
+        rows = con.execute(
+            f"SELECT {columns_sql} FROM bands WHERE {condition} ORDER BY {ORDER_BY['bands']}"
+        ).fetchall()
         payload = json.dumps(
             {c: [r[i] for r in rows] for i, c in enumerate(BANDS_WEB_COLUMNS)},
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode()
-        (web_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload, 9))
+        (web_dir / f"{name}.json.gz").write_bytes(gzip.compress(payload, 9, mtime=0))
         written.add(f"{name}.json.gz")
 
     # Prune what this run did not write. Without it an export dropped from a
