@@ -147,22 +147,52 @@ def write_frieze_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     return n
 
 
+LINEAGE_MAGIC = b"MLN1"
+LINEAGE_VERSION = 1
+
+
 def write_lineage_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
-    """One 9-byte record per edge: src, dst as u32 row indices of `frieze`,
-    then the shared-musician count as u8. Sorted by (src, dst), which groups
-    a band's edges without a separate index."""
+    """Serialises `lineage` as one array per field — src, dst as u32 row
+    indices of `frieze`, then the shared-musician count as u8 — behind the same
+    kind of header as frieze.bin. Interleaved 9-byte records put src and dst at
+    offsets 9k, never 4-aligned, so no Uint32Array was constructible over them
+    and a reader had to decode field by field, which is the decode speed this
+    format exists for. Sorted by (src, dst), which groups a band's edges
+    without a separate index."""
     edges = con.execute("SELECT src, dst, shared FROM lineage ORDER BY src, dst").fetchall()
-    blob = b"".join(struct.pack("<IIB", src, dst, shared) for src, dst, shared in edges)
+    n = len(edges)
+    blob = b"".join(
+        (
+            LINEAGE_MAGIC,
+            struct.pack("<HH", LINEAGE_VERSION, 0),
+            struct.pack("<I", n),
+            struct.pack(f"<{n}I", *(e[0] for e in edges)),
+            struct.pack(f"<{n}I", *(e[1] for e in edges)),
+            struct.pack(f"<{n}B", *(e[2] for e in edges)),
+        )
+    )
     path.write_bytes(gzip.compress(blob, 9, mtime=0))
-    return len(edges)
+    return n
+
+
+IDS_MAGIC = b"MID1"
+IDS_VERSION = 1
 
 
 def write_frieze_ids(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     """Raw 16-byte mbids in frieze row order, so the join back to frieze.bin
     needs no key. Written uncompressed: UUIDs are incompressible, and gzip here
-    would only add a header."""
+    would only add a header.
+
+    The magic and version are what let a reader refuse a stale cached file:
+    without them this blob could say nothing about itself, and an old copy
+    re-paired silently with a fresh frieze.bin misattributes every name. The
+    header is padded to 16 bytes so record k still starts at 16(k + 1)."""
     rows = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
-    path.write_bytes(b"".join(bytes.fromhex(mbid.replace("-", "")) for (mbid,) in rows))
+    header = (
+        IDS_MAGIC + struct.pack("<HH", IDS_VERSION, 0) + struct.pack("<I", len(rows)) + bytes(4)
+    )
+    path.write_bytes(header + b"".join(bytes.fromhex(mbid.replace("-", "")) for (mbid,) in rows))
     return len(rows)
 
 

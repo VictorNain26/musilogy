@@ -118,13 +118,18 @@ extraction déjà nécessaire plutôt que dans un scan dédié.
 
 ## Architecture des données
 
-Deux fichiers produits par `publish.py`, à côté des projections existantes.
+Trois fichiers produits par `publish.py`, à côté des projections existantes.
 
 `web/frieze.bin.gz` (~1,12 Mo) porte tout ce qu'il faut pour dessiner.
 `web/lineage.bin.gz` (~150 Ko) porte les 37 322 arêtes orientées de filiation.
 `web/frieze_ids.bin` (1,35 Mo) porte les `mbid` bruts sur 16 octets, chargé au
 premier clic seulement : ils ne servent qu'à ouvrir MusicBrainz. Publié sans
 gzip, qui ne gagne rien sur des UUID.
+
+Les trois portent un magic et une version en tête — `MFZ1`, `MLN1`, `MID1`.
+`frieze_ids.bin` en a besoin autant que les autres : sans lui, une copie en
+cache se ré-apparie en silence avec un `frieze.bin` neuf et attribue à chaque
+groupe le nom de son voisin.
 
 Au chargement : 113 Ko pour la vue agrégée, puis 1,27 Mo pour la frise détaillée
 et sa généalogie.
@@ -152,13 +157,33 @@ première composante et le compresse bien. L'index de ligne est l'identité
 côté client ; `frieze_ids.bin` est aligné sur le même ordre, ce qui rend la
 jointure implicite.
 
+### Format de `frieze_ids.bin`
+
+Un en-tête de 16 octets — magic `MID1`, version `u16`, padding `u16`, `n_bands`
+en `u32`, puis 4 octets de remplissage — suivi des `mbid` bruts sur 16 octets
+dans l'ordre des lignes. Le remplissage n'est pas décoratif : il fait commencer
+l'enregistrement `k` à `16(k + 1)`, donc à un multiple de sa propre taille,
+comme partout ailleurs ici.
+
 ### Format de `lineage.bin`
 
-Une arête par enregistrement : `src` et `dst` en `u32` — les **index de ligne**
-de `frieze.bin`, pas des MBID —, puis `shared` en `u8`, le nombre de musiciens
-communs, saturé à 255. Les arêtes sont triées par `(src, dst)`, ce qui les
-rend groupables par source sans index séparé et les compresse bien : 0,35 Mo
-brut pour 150 Ko gzip.
+Un tableau par champ, derrière le même genre d'en-tête que `frieze.bin` et sous
+la même contrainte d'alignement. Des enregistrements entrelacés de 9 octets
+plaçaient `src` et `dst` aux offsets `9k`, jamais multiples de 4 : aucun
+`Uint32Array` n'était constructible et le lecteur devait décoder champ par
+champ, ce qui est précisément la vitesse de décodage que ce format existe pour
+donner.
+
+| section | type | longueur | rôle |
+|---|---|---|---|
+| magic + version | `u8[4]` + `u16` + padding `u16` | 8 o | `MLN1` |
+| `n_edges` | `u32` | 4 o | cardinalité |
+| `src` | `u32` | `n_edges` | index de ligne de `frieze.bin`, pas un MBID |
+| `dst` | `u32` | `n_edges` | idem |
+| `shared` | `u8` | `n_edges` | musiciens communs, saturé à 255 |
+
+Les arêtes sont triées par `(src, dst)`, ce qui les rend groupables par source
+sans index séparé et les compresse bien : 0,35 Mo brut pour 150 Ko gzip.
 
 Seules les arêtes orientées sont publiées, `src` étant le groupe formé le
 premier. Deux groupes formés la même année ne produisent pas d'arête : la

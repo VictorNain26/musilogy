@@ -577,22 +577,48 @@ def test_frieze_blob_carries_no_timestamp(con, tmp_path):
 
 
 def test_lineage_blob_round_trips_every_edge(con, tmp_path):
+    # Read the way a browser reads it: three typed-array views over one buffer,
+    # each at an offset the reader derives from the header alone.
     path = tmp_path / "lineage.bin.gz"
     written = write_lineage_blob(con, path)
     raw = gzip.decompress(path.read_bytes())
-    assert len(raw) == written * 9
-    got = [struct.unpack_from("<IIB", raw, 9 * k) for k in range(written)]
-    assert got == con.execute("SELECT src, dst, shared FROM lineage ORDER BY src, dst").fetchall()
+    assert raw[:4] == b"MLN1"
+    assert struct.unpack_from("<H", raw, 4)[0] == 1
+    n = struct.unpack_from("<I", raw, 8)[0]
+    assert n == written
+    src_at, dst_at = 12, 12 + 4 * n
+    shared_at = dst_at + 4 * n
+    assert src_at % 4 == 0
+    assert dst_at % 4 == 0
+    assert len(raw) == shared_at + n
+    src = struct.unpack_from(f"<{n}I", raw, src_at)
+    dst = struct.unpack_from(f"<{n}I", raw, dst_at)
+    shared = struct.unpack_from(f"<{n}B", raw, shared_at)
+    assert (
+        list(zip(src, dst, shared, strict=True))
+        == con.execute("SELECT src, dst, shared FROM lineage ORDER BY src, dst").fetchall()
+    )
+
+
+def test_lineage_blob_carries_no_timestamp(con, tmp_path):
+    path = tmp_path / "lineage.bin.gz"
+    write_lineage_blob(con, path)
+    assert int.from_bytes(path.read_bytes()[4:8], "little") == 0
 
 
 def test_frieze_ids_are_raw_sixteen_byte_uuids_in_row_order(con, tmp_path):
     # Published without gzip: UUIDs do not compress, and the row order is what
-    # makes the join to frieze.bin implicit.
+    # makes the join to frieze.bin implicit. The header is what lets a reader
+    # refuse a stale cached copy: paired with a fresh frieze.bin it would
+    # misattribute every name, and only frieze.bin could say what it was.
     path = tmp_path / "frieze_ids.bin"
     written = write_frieze_ids(con, path)
     raw = path.read_bytes()
-    assert len(raw) == written * 16
-    got = [raw[16 * k : 16 * (k + 1)].hex() for k in range(written)]
+    assert raw[:4] == b"MID1"
+    assert struct.unpack_from("<H", raw, 4)[0] == 1
+    assert struct.unpack_from("<I", raw, 8)[0] == written
+    assert len(raw) == 16 + written * 16
+    got = [raw[16 * (k + 1) : 16 * (k + 2)].hex() for k in range(written)]
     expected = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
     assert got == [mbid.replace("-", "") for (mbid,) in expected]
 
