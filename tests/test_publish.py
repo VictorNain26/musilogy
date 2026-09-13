@@ -464,3 +464,21 @@ def test_web_export_carries_no_timestamp(con, tmp_path, export):
     publish(con, tmp_path, DUMP, None)
     header = (tmp_path / "web" / f"{export}.json.gz").read_bytes()[:8]
     assert int.from_bytes(header[4:8], "little") == 0
+
+
+def test_manifest_carries_the_digest_of_every_delivered_file(con, tmp_path):
+    # The delivery is byte-reproducible, which is only useful if the digests
+    # travel with it: without them a consumer cannot tell a truncated download
+    # from a complete one, nor an unchanged export from a new one, and the
+    # reproducibility cannot be checked by anyone but the producer. Compared as
+    # sets, so a file pruned from a previous schema cannot linger in the
+    # manifest either.
+    manifest = publish(con, tmp_path, DUMP, None)
+    delivered = {
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and path.name != "manifest.json"
+    }
+    assert set(manifest["output_sha256"]) == delivered
+    for name, digest in manifest["output_sha256"].items():
+        assert digest == sha256_file(tmp_path / name)

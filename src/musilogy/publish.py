@@ -248,10 +248,21 @@ def publish(
     rows_loaded = input_rows_loaded(con)
     extraction_record = _extraction(extraction)
 
+    # Read back from disk once every file is written and the stale ones are
+    # gone, never accumulated as they are produced: the manifest has to
+    # describe the delivery that is there, not the one this run meant to write.
+    # manifest.json is excluded because it is the file carrying these digests.
+    output_sha256 = {
+        path.relative_to(out_dir).as_posix(): sha256_file(path)
+        for path in sorted(out_dir.rglob("*"))
+        if path.is_file() and path.name != "manifest.json"
+    }
+
     manifest = {
         "dump": dump,
         "archive_sha256": expected_sums(REFERENCE_DIR / f"{dump}.SHA256SUMS"),
         "counts": counts,
+        "output_sha256": output_sha256,
         "parameters": _parameters(con),
         "inputs": {
             "rows_loaded": rows_loaded,
