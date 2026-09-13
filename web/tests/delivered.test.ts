@@ -10,6 +10,9 @@ function delivered(name: string) {
   return bytes;
 }
 
+// 84262 and 37136 are read back from the manifest as it stood when this
+// suite was written; tests/test_baseline.py is the single point of authority
+// for these figures should the dump ever move.
 describe("the delivered blobs", () => {
   it("hold the frieze population the baseline freezes", async () => {
     const frieze = readFrieze(await inflateIfGzipped(delivered("frieze.bin.gz")));
@@ -21,15 +24,30 @@ describe("the delivered blobs", () => {
     expect(lineage.count).toBe(37136);
   });
 
-  it("carry one mbid per frieze row", async () => {
+  it("carry rows ordered on (y0, mbid), the key both writers sort by", async () => {
     const frieze = readFrieze(await inflateIfGzipped(delivered("frieze.bin.gz")));
     const bytes = delivered("frieze_ids.bin");
     const ids = readFriezeIds(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     );
-    // A row-for-row misalignment here would show every band under its
-    // neighbour's name, and nothing else in the suite would see it.
     expect(ids.count).toBe(frieze.count);
+    // write_frieze_blob and write_frieze_ids both order rows by (y0, mbid), so
+    // a shift or a permutation between the two blobs breaks that order in at
+    // least one of them. Non-decreasing y0, and mbid strictly increasing
+    // within equal y0, is what a correct pairing looks like; a single
+    // violating index is enough to prove misalignment without asserting on
+    // all 84,262 rows.
+    let violation = -1;
+    for (let i = 1; i < frieze.count; i++) {
+      const sameYear = frieze.y0[i] === frieze.y0[i - 1];
+      const ordered =
+        frieze.y0[i] > frieze.y0[i - 1] || (sameYear && ids.mbid(i) > ids.mbid(i - 1));
+      if (!ordered) {
+        violation = i;
+        break;
+      }
+    }
+    expect(violation).toBe(-1);
   });
 
   it("index a genre vocabulary that covers every pair", async () => {
