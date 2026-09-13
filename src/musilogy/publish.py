@@ -104,10 +104,7 @@ def write_frieze_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     starts at a multiple of its element size: a TypedArray built on a
     misaligned byteOffset throws RangeError in the browser."""
     rows = con.execute(
-        "SELECT f.i, f.name, f.y0, f.y1, f.ended, "
-        # NULL rather than false when the band never ended: a declared end
-        # cannot apply to a band that has none, so the flag has nothing to say.
-        "  coalesce(f.y_end_declared, false) AS y_end_declared, f.n_albums, "
+        "SELECT f.i, f.name, f.y0, f.y1, f.ended, f.y_end_declared, f.n_albums, "
         "  coalesce(list_transform(b.genres, g -> g.mbid), []) AS genre_mbids "
         "FROM frieze f JOIN bands b ON b.mbid = f.mbid ORDER BY f.i"
     ).fetchall()
@@ -129,7 +126,7 @@ def write_frieze_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
         name_offsets.append(len(names))
         spans += [y0 | (int(ended) << 15), y1 | (int(declared) << 15)]
         albums.append(n_albums)
-        genre_ids += [vocabulary[m] for m in genre_mbids if m in vocabulary]
+        genre_ids += [vocabulary[m] for m in genre_mbids]
         genre_offsets.append(len(genre_ids))
 
     n = len(rows)

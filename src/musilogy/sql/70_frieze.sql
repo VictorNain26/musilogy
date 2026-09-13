@@ -26,7 +26,10 @@ SELECT
   -- Published beside y1 because y_presence_end collapses to y0 when the end is
   -- unknown: without this flag the frieze draws a one-year bar and asserts an
   -- end the source never declared.
-  b.y_end_source = 'declared' AS y_end_declared,
+  -- NULL rather than false for a band that never ended: the flag has nothing
+  -- to declare there, and false is the honest reading for the blob and for
+  -- every consumer that branches on it.
+  coalesce(b.y_end_source = 'declared', false) AS y_end_declared,
   -- The rank key. Album count is carried by the source; a notoriety score
   -- would have to be invented, and the frieze can only show a few hundred
   -- bands at once so the choice has to be defensible.

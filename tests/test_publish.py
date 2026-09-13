@@ -517,10 +517,7 @@ def test_frieze_blob_round_trips_every_band(con, tmp_path):
     written = write_frieze_blob(con, path)
     blob = read_frieze_blob(gzip.decompress(path.read_bytes()))
     expected = con.execute(
-        # y_end_declared is NULL for a band that never ended: the flag has
-        # nothing to say there, and the blob encodes it as unset.
-        "SELECT name, y0, y1, ended, coalesce(y_end_declared, false), n_albums"
-        " FROM frieze ORDER BY i"
+        "SELECT name, y0, y1, ended, y_end_declared, n_albums FROM frieze ORDER BY i"
     ).fetchall()
     assert written == blob["n"] == len(expected)
     assert blob["names"] == [r[0] for r in expected]
@@ -530,6 +527,26 @@ def test_frieze_blob_round_trips_every_band(con, tmp_path):
         assert bool(blob["spans"][2 * i] >> 15) == ended
         assert bool(blob["spans"][2 * i + 1] >> 15) == declared
         assert blob["albums"][i] == n_albums
+
+
+def test_frieze_blob_genre_ids_round_trip_through_the_published_vocabulary(con, tmp_path):
+    # genre_ids stores indices into web/genres.json.gz's row order, not mbids:
+    # if the vocabulary were ever built in a different order on either side,
+    # every genre in the blob would silently point at the wrong name.
+    path = tmp_path / "frieze.bin.gz"
+    write_frieze_blob(con, path)
+    blob = read_frieze_blob(gzip.decompress(path.read_bytes()))
+    vocabulary = [
+        r[0] for r in con.execute("SELECT genre_mbid FROM genres ORDER BY genre_mbid").fetchall()
+    ]
+    expected = con.execute(
+        "SELECT f.i, coalesce(list_transform(b.genres, g -> g.mbid), []) "
+        "FROM frieze f JOIN bands b ON b.mbid = f.mbid ORDER BY f.i"
+    ).fetchall()
+    for i, genre_mbids in expected:
+        start, end = blob["genre_offsets"][i], blob["genre_offsets"][i + 1]
+        decoded = {vocabulary[gid] for gid in blob["genre_ids"][start:end]}
+        assert decoded == set(genre_mbids)
 
 
 def test_frieze_blob_sections_are_aligned_for_typed_arrays(con, tmp_path):
