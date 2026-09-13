@@ -1,8 +1,6 @@
 import duckdb
 
-from musilogy.paths import PACKAGE_DIR
-
-REPO_ROOT = PACKAGE_DIR.parent.parent
+from musilogy.paths import REPO_ROOT
 
 
 def test_duckdb_version_is_pinned():

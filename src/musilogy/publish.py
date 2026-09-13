@@ -357,8 +357,11 @@ def publish(
     # web/*.json.gz then loads a file describing a population that no longer
     # exists, joinable to nothing. That reasoning was always about every
     # export, not only the JSON ones, hence every file under web/, not a glob.
-    for stale in web_dir.iterdir():
-        if stale.is_file() and stale.name not in written:
+    # rglob, like the digest walk below: with iterdir a file in a subdirectory
+    # of web/ escaped pruning and was digested as delivered anyway, so the two
+    # walks disagreed on what the delivery contains.
+    for stale in web_dir.rglob("*"):
+        if stale.is_file() and stale.relative_to(web_dir).as_posix() not in written:
             stale.unlink()
 
     rows_loaded = input_rows_loaded(con)

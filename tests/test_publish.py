@@ -653,6 +653,19 @@ def test_publish_delivers_the_three_blobs_and_digests_them(con, tmp_path):
         assert name in manifest["output_sha256"]
 
 
+def test_publish_prunes_a_stale_file_left_in_a_subdirectory_of_web(con, tmp_path):
+    # The pruning loop and the digest walk must agree on what web/ contains:
+    # with iterdir the nested file survived pruning and was digested as
+    # delivered, so the manifest announced a file no run had written.
+    nested = tmp_path / "web" / "old"
+    nested.mkdir(parents=True)
+    stale = nested / "bands_timeline.json.gz"
+    stale.write_bytes(b"stale")
+    manifest = publish(con, tmp_path, DUMP, None)
+    assert not stale.exists()
+    assert "web/old/bands_timeline.json.gz" not in manifest["output_sha256"]
+
+
 def test_publish_prunes_a_stale_blob_but_keeps_the_ones_it_just_wrote(con, tmp_path):
     # The widened pruning loop walks every file in web/, not just *.json.gz:
     # this fails if the three blob names are missing from `written`, since the
