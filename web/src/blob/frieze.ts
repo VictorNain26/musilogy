@@ -34,6 +34,13 @@ export function readFrieze(buffer: ArrayBuffer): Frieze {
   at += 4 * (count + 1);
   const genreOffsets = new Uint32Array(buffer, at, count + 1);
   at += 4 * (count + 1);
+
+  if (genreOffsets[count] !== pairs) {
+    throw new Error(
+      `frieze.bin: genres section has ${pairs} pairs, offsets end at ${genreOffsets[count]}`,
+    );
+  }
+
   const spans = new Uint16Array(buffer, at, 2 * count);
   at += 4 * count;
   const genreIds = new Uint16Array(buffer, at, pairs);

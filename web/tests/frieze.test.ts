@@ -70,4 +70,11 @@ describe("readFrieze", () => {
     new DataView(buffer).setUint16(4, 2, true);
     expect(() => readFrieze(buffer)).toThrow(/version 2/);
   });
+
+  it("refuses a blob whose genre offsets do not match the header pairs count", async () => {
+    const bytes = new Uint8Array(readFileSync(new URL("fixtures/frieze.bin.gz", import.meta.url)));
+    const buffer = await inflateIfGzipped(bytes);
+    new DataView(buffer).setUint32(12, 99, true);
+    expect(() => readFrieze(buffer)).toThrow(/genres section has 99 pairs, offsets end at 130/);
+  });
 });
