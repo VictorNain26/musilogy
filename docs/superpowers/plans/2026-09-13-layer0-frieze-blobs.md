@@ -679,14 +679,27 @@ def write_frieze_ids(con: duckdb.DuckDBPyConnection, path: Path) -> int:
 In `publish()`, immediately after the `for name, condition in (...)` loop that writes `bands_timeline` and `bands_rest`, and before the pruning loop:
 
 ```python
-    written.add("frieze.bin.gz")
-    written.add("lineage.bin.gz")
-    write_frieze_blob(con, web_dir / "frieze.bin.gz")
-    write_lineage_blob(con, web_dir / "lineage.bin.gz")
-    write_frieze_ids(con, web_dir / "frieze_ids.bin")
+    for name, writer in (
+        ("frieze.bin.gz", write_frieze_blob),
+        ("lineage.bin.gz", write_lineage_blob),
+        ("frieze_ids.bin", write_frieze_ids),
+    ):
+        writer(con, web_dir / name)
+        written.add(name)
 ```
 
-The pruning loop below globs `web/*.json.gz` only, so `frieze_ids.bin` is untouched by it; the two `.gz` names must be in `written` or the next run deletes them.
+Then widen the pruning loop just below, which currently globs `web/*.json.gz`
+and would therefore never prune a stale `.bin`:
+
+```python
+    for stale in web_dir.iterdir():
+        if stale.is_file() and stale.name not in written:
+            stale.unlink()
+```
+
+Its existing comment stays and still applies — it explains why a file this run
+did not write must not survive in the delivered directory. That reasoning was
+always about every export, not only the JSON ones.
 
 - [ ] **Step 5: Run test to verify it passes**
 
