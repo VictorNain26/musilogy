@@ -2,6 +2,7 @@ import gzip
 import json
 import subprocess
 
+import pytest
 from conftest import build_synthetic, synthetic_artist, unreliable_genre_records
 
 from musilogy import REFERENCE_DUMP as DUMP
@@ -406,3 +407,60 @@ def test_manifest_extraction_match_is_none_when_a_count_key_is_missing(con, tmp_
     sidecar.write_text(json.dumps({"artists_kept": 28}), encoding="utf-8")
     manifest = publish(con, tmp_path / "out", DUMP, None, sidecar)
     assert manifest["inputs"]["extraction_matches_rows_loaded"] is None
+
+
+# A delivery is reproducible only if its rows come out in a fixed order: same
+# code and same extraction must give the same bytes, or no consumer can cache
+# by digest and no two dumps can be diffed. The engine builds these tables with
+# parallel joins and aggregates, so insertion order is whatever the threads
+# produced — publishing has to impose the order itself.
+PARQUET_KEYS = {
+    "bands": ["mbid"],
+    "albums": ["rg_mbid"],
+    "genres": ["genre_mbid"],
+    "density": ["genre_mbid", "year"],
+    "members": ["band_mbid", "person_mbid", "y_begin", "y_end"],
+}
+WEB_KEYS = {
+    "genres": ["genre_mbid"],
+    "density": ["genre_mbid", "year"],
+    "bands_timeline": ["mbid"],
+    "bands_rest": ["mbid"],
+}
+
+
+def nulls_last(row):
+    """members' key carries NULL years on 464k of its 601k rows, so the test
+    has to state where NULLs sort — Python refuses to compare None to an int,
+    and DuckDB's placement is a session setting rather than a property of the
+    query."""
+    return tuple((value is None, value) for value in row)
+
+
+@pytest.mark.parametrize("table", sorted(PARQUET_KEYS))
+def test_published_parquet_rows_are_ordered_by_their_key(con, tmp_path, table):
+    publish(con, tmp_path, DUMP, None)
+    columns = ", ".join(PARQUET_KEYS[table])
+    path = (tmp_path / f"{table}.parquet").as_posix()
+    rows = con.execute(f"SELECT {columns} FROM read_parquet('{path}')").fetchall()
+    assert rows == sorted(rows, key=nulls_last)
+
+
+@pytest.mark.parametrize("export", sorted(WEB_KEYS))
+def test_web_export_rows_are_ordered_by_their_key(con, tmp_path, export):
+    publish(con, tmp_path, DUMP, None)
+    data = read_web(tmp_path, export)
+    rows = list(zip(*(data[column] for column in WEB_KEYS[export]), strict=True))
+    assert rows == sorted(rows, key=nulls_last)
+
+
+@pytest.mark.parametrize("export", sorted(WEB_KEYS))
+def test_web_export_carries_no_timestamp(con, tmp_path, export):
+    # Ordering the rows is not enough for a reproducible delivery: the gzip
+    # header holds an mtime field, so the same bytes compressed twice differ.
+    # Asserted on the header rather than by publishing twice and diffing —
+    # mtime has one-second resolution, and two publications of the fixtures
+    # land in the same second, so the comparison would sleep on the bug.
+    publish(con, tmp_path, DUMP, None)
+    header = (tmp_path / "web" / f"{export}.json.gz").read_bytes()[:8]
+    assert int.from_bytes(header[4:8], "little") == 0
