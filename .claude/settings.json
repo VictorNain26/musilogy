@@ -1,0 +1,35 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-settings.json",
+
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest*)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run mypy*)",
+      "Bash(uv run musilogy *)",
+      "Bash(uv sync*)",
+      "Bash(uv lock*)"
+    ],
+    "ask": [
+      "Bash(uv run musilogy run*)"
+    ],
+    "deny": [
+      "Edit(/tests/fixtures/**)"
+    ]
+  },
+
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/ruff.sh\"",
+            "timeout": 60,
+            "statusMessage": "ruff"
+          }
+        ]
+      }
+    ]
+  }
+}
