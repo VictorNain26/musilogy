@@ -89,6 +89,14 @@ Le coût mesuré de la règle est un faux positif, `mincecore` (73,1 % sur 216 c
 - `web/genres.json.gz` — le vocabulaire, avec `density_eligible`, `n_candidate_credits` et `multi_artist_drop_pct` ;
 - `web/density.json.gz` — l'agrégat par genre et par année.
 
+Et trois blobs binaires, la frise elle-même :
+
+- `web/frieze.bin.gz` — un enregistrement par groupe dessinable, en tableaux typés derrière un en-tête `MFZ1` ;
+- `web/lineage.bin.gz` — les arêtes orientées de filiation, `src`/`dst`/`shared` en tableaux séparés derrière `MLN1` ;
+- `web/frieze_ids.bin` — les `mbid` bruts sur 16 octets dans l'ordre des lignes, derrière `MID1`, chargés au premier clic seulement.
+
+Les trois s'indexent par le rang de ligne de `frieze`, pas par `mbid` : c'est ce qui rend la jointure implicite et le décodage immédiat. `docs/superpowers/specs/2026-09-13-layer1-frieze-design.md` décrit les trois formats octet par octet.
+
 `density` est publié plutôt que laissé à recalculer, et `density_eligible` voyage désormais avec le vocabulaire comme une colonne à part entière — la règle elle-même, pas seulement les deux mesures qui la motivent, elles aussi publiées à côté pour qui veut l'auditer plutôt que la croire sur parole. Un consommateur n'a donc plus de seuil à coder en dur : sans cette colonne, reconstruire la densité depuis les seuls artefacts web donne 53 029 cellules au lieu de 52 201 — les 828 cellules des treize genres que la couche 0 refuse délibérément de publier. Réimplémenter une règle, c'est là qu'elle se perd.
 
 Chaque ligne porte son `mbid` — la clé de jointure vers `density`, `members` et MusicBrainz — ses `genres`, et les deux bords avec leurs preuves brutes des deux côtés.
@@ -97,7 +105,7 @@ Chaque ligne porte son `mbid` — la clé de jointure vers `density`, `members` 
 
 **Deux sujets restent ouverts pour la couche 1.** Le poids : 15,6 Mo gzip pour la frise, non pas à cause des genres (1,7 Mo) mais des identifiants eux-mêmes, des UUID de 36 octets qui ne se compressent pas ; un chargement initial complet n'est pas réaliste sur mobile, et le découpage par genre ou par période lui revient. Et l'absence de hiérarchie : les 1 348 genres sont **plats**, sans regroupement possible, faute de source fiable — parcourir cette liste à la main n'est pas une interface.
 
-`manifest.json` porte les empreintes des archives **et celles des neuf fichiers livrés** (`output_sha256`), les comptes, les **paramètres** du run (`dump_year`, `min_year`, `multi_artist_drop_limit`, `min_candidate_credits`), les **entrées** (`rows_loaded` par table brute, le sidecar d'extraction), les anomalies de lecture de dates, les trois compteurs de neutralisation, les exclusions de densité, le commit et l'empreinte des corrections.
+`manifest.json` porte les empreintes des archives **et celles des douze fichiers livrés** — cinq Parquet, quatre `.json.gz`, trois blobs — (`output_sha256`), les comptes, les **paramètres** du run (`dump_year`, `min_year`, `multi_artist_drop_limit`, `min_candidate_credits`), les **entrées** (`rows_loaded` par table brute, le sidecar d'extraction), les anomalies de lecture de dates, les trois compteurs de neutralisation, les exclusions de densité, le commit et l'empreinte des corrections.
 
 Ces empreintes de sortie sont opposables parce que la livraison est reproductible : à dump et code identiques, deux exécutions écrivent les mêmes octets. L'ordre des lignes est fixé par une clé totale sur chaque table et le gzip ne porte pas d'horodatage. Un consommateur distingue donc une livraison inchangée d'une nouvelle par sa seule empreinte, sans retélécharger.
 
