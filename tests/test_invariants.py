@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import duckdb
 import pytest
-from conftest import FIX, SQL, build_synthetic, unreliable_genre_records
+from conftest import FIX, SQL, build_synthetic, synthetic_artist, unreliable_genre_records
 
 from musilogy.build import INVARIANTS, build, check_invariants
 from musilogy.paths import SQL_DIR
@@ -705,14 +705,33 @@ def test_frieze_year_unencodable_is_reported(con):
     assert violations.get("frieze_year_unencodable") == 1
 
 
-def test_frieze_mbid_unencodable_is_reported(con):
-    # Two hex characters short, so the mbid still passes bytes.fromhex — an odd
-    # length would raise, an even one silently writes a 15-byte record into
-    # frieze_ids.bin and slides every offset after it.
-    i, mbid = con.execute("SELECT i, mbid FROM frieze ORDER BY i LIMIT 1").fetchone()
-    with restored(con, ("UPDATE frieze SET mbid = ? WHERE i = ?", [mbid, i])):
-        con.execute("UPDATE frieze SET mbid = ? WHERE i = ?", [mbid[:-2], i])
-        violations = dict(check_invariants(con, SQL))
+FRIEZE_GENRE = [{"mbid": "g-frieze", "name": "frieze", "votes": 1}]
+WELL_FORMED_BAND = "00000000-0000-4000-8000-000000000021"
+# Two hex characters short of a UUID, the shape that corrupts silently: an odd
+# number of hex characters would make bytes.fromhex raise, an even one writes a
+# 15-byte record into frieze_ids.bin and slides every offset after it.
+TRUNCATED_BAND = "00000000-0000-4000-8000-0000000000"
+
+
+def test_frieze_mbid_unencodable_is_reported(tmp_path):
+    # Built from a dump, not mutated after the fact: unlike every other frieze
+    # invariant, this one guards a value the layer receives rather than one it
+    # computes, and nothing upstream constrains an mbid — extract.py and
+    # 10_bands.sql carry it through as a VARCHAR. So the malformed shape can
+    # genuinely arrive, and the test has to show it arriving. A well-formed
+    # band travels beside it, so the count is the malformed one and not the
+    # population.
+    c = build_synthetic(
+        tmp_path,
+        [
+            synthetic_artist(WELL_FORMED_BAND, "1990", None, genres=FRIEZE_GENRE),
+            synthetic_artist(TRUNCATED_BAND, "1991", None, genres=FRIEZE_GENRE),
+        ],
+    )
+    assert c.execute("SELECT count(*) FROM frieze").fetchone()[0] == 2, (
+        "the malformed mbid must reach frieze, or this test proves nothing"
+    )
+    violations = dict(check_invariants(c, SQL))
     assert violations.get("frieze_mbid_unencodable") == 1
 
 
