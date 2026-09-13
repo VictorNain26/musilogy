@@ -29,7 +29,7 @@ SELECT
   -- NULL rather than false for a band that never ended: the flag has nothing
   -- to declare there, and false is the honest reading for the blob and for
   -- every consumer that branches on it.
-  coalesce(b.y_end_source = 'declared', false) AS y_end_declared,
+  coalesce(b.y_end_source = 'declared', false) AS y_end_is_declared,
   -- The rank key. Album count is carried by the source; a notoriety score
   -- would have to be invented, and the frieze can only show a few hundred
   -- bands at once so the choice has to be defensible.

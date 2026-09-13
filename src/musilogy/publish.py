@@ -104,7 +104,7 @@ def write_frieze_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     starts at a multiple of its element size: a TypedArray built on a
     misaligned byteOffset throws RangeError in the browser."""
     rows = con.execute(
-        "SELECT f.i, f.name, f.y0, f.y1, f.ended, f.y_end_declared, f.n_albums, "
+        "SELECT f.i, f.name, f.y0, f.y1, f.ended, f.y_end_is_declared, f.n_albums, "
         "  coalesce(list_transform(b.genres, g -> g.mbid), []) AS genre_mbids "
         "FROM frieze f JOIN bands b ON b.mbid = f.mbid ORDER BY f.i"
     ).fetchall()

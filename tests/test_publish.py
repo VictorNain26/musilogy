@@ -518,7 +518,7 @@ def test_frieze_blob_round_trips_every_band(con, tmp_path):
     written = write_frieze_blob(con, path)
     blob = read_frieze_blob(gzip.decompress(path.read_bytes()))
     expected = con.execute(
-        "SELECT name, y0, y1, ended, y_end_declared, n_albums FROM frieze ORDER BY i"
+        "SELECT name, y0, y1, ended, y_end_is_declared, n_albums FROM frieze ORDER BY i"
     ).fetchall()
     assert written == blob["n"] == len(expected)
     assert blob["names"] == [r[0] for r in expected]
