@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import struct
 import subprocess
 from decimal import Decimal
 from pathlib import Path
@@ -92,6 +93,61 @@ def _columnar(con: duckdb.DuckDBPyConnection, table: str, columns: list[str]) ->
         f"SELECT {', '.join(columns)} FROM {table} ORDER BY {ORDER_BY[table]}"
     ).fetchall()
     return {c: [r[i] for r in rows] for i, c in enumerate(columns)}
+
+
+FRIEZE_MAGIC = b"MFZ1"
+FRIEZE_VERSION = 1
+
+
+def write_frieze_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
+    """Serialises `frieze` as typed arrays. Sections are laid out so each one
+    starts at a multiple of its element size: a TypedArray built on a
+    misaligned byteOffset throws RangeError in the browser."""
+    rows = con.execute(
+        "SELECT f.i, f.name, f.y0, f.y1, f.ended, "
+        # NULL rather than false when the band never ended: a declared end
+        # cannot apply to a band that has none, so the flag has nothing to say.
+        "  coalesce(f.y_end_declared, false) AS y_end_declared, f.n_albums, "
+        "  coalesce(list_transform(b.genres, g -> g.mbid), []) AS genre_mbids "
+        "FROM frieze f JOIN bands b ON b.mbid = f.mbid ORDER BY f.i"
+    ).fetchall()
+    vocabulary = {
+        mbid: index
+        for index, (mbid,) in enumerate(
+            con.execute("SELECT genre_mbid FROM genres ORDER BY genre_mbid").fetchall()
+        )
+    }
+
+    names = bytearray()
+    name_offsets = [0]
+    genre_offsets = [0]
+    spans: list[int] = []
+    genre_ids: list[int] = []
+    albums: list[int] = []
+    for _, name, y0, y1, ended, declared, n_albums, genre_mbids in rows:
+        names += name.encode() + b"\n"
+        name_offsets.append(len(names))
+        spans += [y0 | (int(ended) << 15), y1 | (int(declared) << 15)]
+        albums.append(n_albums)
+        genre_ids += [vocabulary[m] for m in genre_mbids if m in vocabulary]
+        genre_offsets.append(len(genre_ids))
+
+    n = len(rows)
+    blob = b"".join(
+        (
+            FRIEZE_MAGIC,
+            struct.pack("<HH", FRIEZE_VERSION, 0),
+            struct.pack("<II", n, len(genre_ids)),
+            struct.pack(f"<{n + 1}I", *name_offsets),
+            struct.pack(f"<{n + 1}I", *genre_offsets),
+            struct.pack(f"<{2 * n}H", *spans),
+            struct.pack(f"<{len(genre_ids)}H", *genre_ids),
+            struct.pack(f"<{n}B", *albums),
+            bytes(names),
+        )
+    )
+    path.write_bytes(gzip.compress(blob, 9, mtime=0))
+    return n
 
 
 def _counters(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, int]:

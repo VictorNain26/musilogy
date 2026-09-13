@@ -1,5 +1,6 @@
 import gzip
 import json
+import struct
 import subprocess
 
 import pytest
@@ -8,7 +9,7 @@ from conftest import build_synthetic, synthetic_artist, unreliable_genre_records
 from musilogy import REFERENCE_DUMP as DUMP
 from musilogy.fetch import expected_sums, sha256_file
 from musilogy.paths import PACKAGE_DIR, REFERENCE_DIR
-from musilogy.publish import publish
+from musilogy.publish import publish, write_frieze_blob
 
 REF_SUMS = REFERENCE_DIR / f"{DUMP}.SHA256SUMS"
 
@@ -482,3 +483,76 @@ def test_manifest_carries_the_digest_of_every_delivered_file(con, tmp_path):
     assert set(manifest["output_sha256"]) == delivered
     for name, digest in manifest["output_sha256"].items():
         assert digest == sha256_file(tmp_path / name)
+
+
+def read_frieze_blob(raw):
+    """Mirrors what the browser does: a header, then typed-array views."""
+    assert raw[:4] == b"MFZ1"
+    n, pairs = struct.unpack_from("<II", raw, 8)
+    o = 16
+    name_offsets = struct.unpack_from(f"<{n + 1}I", raw, o)
+    o += 4 * (n + 1)
+    genre_offsets = struct.unpack_from(f"<{n + 1}I", raw, o)
+    o += 4 * (n + 1)
+    spans = struct.unpack_from(f"<{2 * n}H", raw, o)
+    o += 4 * n
+    genre_ids = struct.unpack_from(f"<{pairs}H", raw, o)
+    o += 2 * pairs
+    albums = struct.unpack_from(f"<{n}B", raw, o)
+    o += n
+    names = raw[o:]
+    return {
+        "n": n,
+        "pairs": pairs,
+        "spans": spans,
+        "albums": albums,
+        "genre_ids": genre_ids,
+        "genre_offsets": genre_offsets,
+        "names": [names[name_offsets[i] : name_offsets[i + 1] - 1].decode() for i in range(n)],
+    }
+
+
+def test_frieze_blob_round_trips_every_band(con, tmp_path):
+    path = tmp_path / "frieze.bin.gz"
+    written = write_frieze_blob(con, path)
+    blob = read_frieze_blob(gzip.decompress(path.read_bytes()))
+    expected = con.execute(
+        # y_end_declared is NULL for a band that never ended: the flag has
+        # nothing to say there, and the blob encodes it as unset.
+        "SELECT name, y0, y1, ended, coalesce(y_end_declared, false), n_albums"
+        " FROM frieze ORDER BY i"
+    ).fetchall()
+    assert written == blob["n"] == len(expected)
+    assert blob["names"] == [r[0] for r in expected]
+    for i, (_, y0, y1, ended, declared, n_albums) in enumerate(expected):
+        assert blob["spans"][2 * i] & 0x7FFF == y0
+        assert blob["spans"][2 * i + 1] & 0x7FFF == y1
+        assert bool(blob["spans"][2 * i] >> 15) == ended
+        assert bool(blob["spans"][2 * i + 1] >> 15) == declared
+        assert blob["albums"][i] == n_albums
+
+
+def test_frieze_blob_sections_are_aligned_for_typed_arrays(con, tmp_path):
+    # A TypedArray whose byteOffset is not a multiple of its element size throws
+    # RangeError in the browser, so the offsets are asserted rather than hoped
+    # for. Computed the way a reader computes them, from the header alone.
+    path = tmp_path / "frieze.bin.gz"
+    write_frieze_blob(con, path)
+    raw = gzip.decompress(path.read_bytes())
+    n, pairs = struct.unpack_from("<II", raw, 8)
+    name_offsets_at = 16
+    genre_offsets_at = name_offsets_at + 4 * (n + 1)
+    spans_at = genre_offsets_at + 4 * (n + 1)
+    genre_ids_at = spans_at + 4 * n
+    albums_at = genre_ids_at + 2 * pairs
+    assert name_offsets_at % 4 == 0
+    assert genre_offsets_at % 4 == 0
+    assert spans_at % 2 == 0
+    assert genre_ids_at % 2 == 0
+    assert albums_at + n <= len(raw)
+
+
+def test_frieze_blob_carries_no_timestamp(con, tmp_path):
+    path = tmp_path / "frieze.bin.gz"
+    write_frieze_blob(con, path)
+    assert int.from_bytes(path.read_bytes()[4:8], "little") == 0
