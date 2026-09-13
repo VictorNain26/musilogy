@@ -54,7 +54,6 @@ describe("readFrieze", () => {
     const frieze = await witness();
     expect(frieze.genreOffsets[0]).toBe(0);
     expect(frieze.genreOffsets[1]).toBe(12);
-    expect(frieze.genreOffsets[frieze.count]).toBe(frieze.pairs);
     expect(Array.from(frieze.genreIds.subarray(0, 5))).toEqual([4, 37, 31, 54, 11]);
   });
 
@@ -76,5 +75,13 @@ describe("readFrieze", () => {
     const buffer = await inflateIfGzipped(bytes);
     new DataView(buffer).setUint32(12, 99, true);
     expect(() => readFrieze(buffer)).toThrow(/genres section has 99 pairs, offsets end at 130/);
+  });
+
+  it("refuses a blob truncated before the names section", async () => {
+    const bytes = new Uint8Array(readFileSync(new URL("fixtures/frieze.bin.gz", import.meta.url)));
+    const buffer = await inflateIfGzipped(bytes);
+    // Fixed part is 24 + 13*count + 2*pairs = 24 + 13*20 + 2*130 = 544 bytes.
+    const truncated = buffer.slice(0, 500);
+    expect(() => readFrieze(truncated)).toThrow(/frieze.bin: expected at least 544 bytes, got 500/);
   });
 });

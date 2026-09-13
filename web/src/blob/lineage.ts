@@ -1,6 +1,6 @@
+import { readHeader } from "./header";
+
 const MAGIC = "MLN1";
-const VERSION = 1;
-const decoder = new TextDecoder();
 
 export interface Lineage {
   readonly count: number;
@@ -10,15 +10,7 @@ export interface Lineage {
 }
 
 export function readLineage(buffer: ArrayBuffer): Lineage {
-  const view = new DataView(buffer);
-  const magic = decoder.decode(new Uint8Array(buffer, 0, 4));
-  if (magic !== MAGIC) {
-    throw new Error(`lineage.bin: expected magic ${MAGIC}, got ${JSON.stringify(magic)}`);
-  }
-  const version = view.getUint16(4, true);
-  if (version !== VERSION) {
-    throw new Error(`lineage.bin: unsupported version ${version}`);
-  }
+  const view = readHeader(buffer, "lineage.bin", MAGIC);
 
   const count = view.getUint32(8, true);
   const expectedSize = 12 + 9 * count;

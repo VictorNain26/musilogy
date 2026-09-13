@@ -1,5 +1,6 @@
+import { readHeader } from "./header";
+
 const MAGIC = "MFZ1";
-const VERSION = 1;
 const decoder = new TextDecoder();
 
 export interface Frieze {
@@ -16,18 +17,17 @@ export interface Frieze {
 }
 
 export function readFrieze(buffer: ArrayBuffer): Frieze {
-  const view = new DataView(buffer);
-  const magic = decoder.decode(new Uint8Array(buffer, 0, 4));
-  if (magic !== MAGIC) {
-    throw new Error(`frieze.bin: expected magic ${MAGIC}, got ${JSON.stringify(magic)}`);
-  }
-  const version = view.getUint16(4, true);
-  if (version !== VERSION) {
-    throw new Error(`frieze.bin: unsupported version ${version}`);
-  }
+  const view = readHeader(buffer, "frieze.bin", MAGIC);
 
   const count = view.getUint32(8, true);
   const pairs = view.getUint32(12, true);
+
+  // Everything up to `names` is fixed-size; `names` is the trailing
+  // variable-length section, so this is a floor rather than the exact total.
+  const fixedSize = 24 + 13 * count + 2 * pairs;
+  if (buffer.byteLength < fixedSize) {
+    throw new Error(`frieze.bin: expected at least ${fixedSize} bytes, got ${buffer.byteLength}`);
+  }
 
   let at = 16;
   const nameOffsets = new Uint32Array(buffer, at, count + 1);
