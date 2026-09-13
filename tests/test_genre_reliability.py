@@ -1,5 +1,5 @@
 import pytest
-from conftest import build_synthetic, unreliable_genre_records
+from conftest import BAND_EXCLUDED, BAND_EXCLUDED_2, build_synthetic, unreliable_genre_records
 
 
 @pytest.fixture(scope="module")
@@ -36,7 +36,7 @@ def test_the_rate_is_measured_on_raw_release_groups_not_on_the_albums_table(c):
     # from `albums` would read 0% (or no row at all) on a genre that in fact
     # loses everything.
     assert c.execute(
-        "SELECT count(*) FROM albums WHERE band_mbid = 'band-excluded'"
+        "SELECT count(*) FROM albums WHERE band_mbid = ?", [BAND_EXCLUDED]
     ).fetchone() == (0,)
     assert measurement(c, "g-excluded") == (250, 100.0)
 
@@ -70,7 +70,7 @@ def test_the_excluded_genre_stays_on_every_population_table(c):
         "SELECT count(*) FROM bands b, UNNEST(b.genres) AS t(g) WHERE t.g.mbid = 'g-excluded'"
     ).fetchone() == (2,)
     assert c.execute(
-        "SELECT count(*) FROM bands WHERE mbid IN ('band-excluded', 'band-excluded-2')"
+        "SELECT count(*) FROM bands WHERE mbid IN (?, ?)", [BAND_EXCLUDED, BAND_EXCLUDED_2]
     ).fetchone() == (2,)
 
 
