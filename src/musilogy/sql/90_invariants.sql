@@ -245,3 +245,15 @@ CREATE OR REPLACE VIEW frieze_index_broken AS
 -- Years are written into 15 bits of a u16, the top bit carrying a flag.
 CREATE OR REPLACE VIEW frieze_year_unencodable AS
   SELECT i FROM frieze WHERE y0 < 0 OR y0 > 32767 OR y1 < 0 OR y1 > 32767 OR y1 < y0;
+-- Both ends must be drawable rows of `frieze`, or the published edge points at
+-- a row index the blob does not contain.
+CREATE OR REPLACE VIEW lineage_endpoint_missing AS
+  SELECT src AS i FROM lineage WHERE src NOT IN (SELECT i FROM frieze)
+  UNION ALL
+  SELECT dst FROM lineage WHERE dst NOT IN (SELECT i FROM frieze);
+CREATE OR REPLACE VIEW lineage_not_oriented AS
+  SELECT l.src FROM lineage l
+  JOIN frieze s ON s.i = l.src JOIN frieze t ON t.i = l.dst
+  WHERE s.y0 >= t.y0;
+CREATE OR REPLACE VIEW lineage_duplicate AS
+  SELECT src, dst FROM lineage GROUP BY src, dst HAVING count(*) > 1;
