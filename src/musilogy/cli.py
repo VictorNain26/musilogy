@@ -20,6 +20,7 @@ from musilogy.paths import (
     RAW_DIR,
     REFERENCE_DIR,
     SQL_DIR,
+    WEB_DATA_DIR,
     WEB_FIXTURES_DIR,
     out_dir,
     work_dir,
@@ -166,6 +167,28 @@ def make_web_fixtures() -> None:
     print("web fixtures written to", WEB_FIXTURES_DIR)
 
 
+DELIVERED_TO_WEB = (
+    "frieze.bin.gz",
+    "lineage.bin.gz",
+    "frieze_ids.bin",
+    "genres.json.gz",
+    "density.json.gz",
+)
+
+
+def sync_web() -> None:
+    """Copies the current delivery into the versioned web/public/data/."""
+    source = out_dir(DUMP) / "web"
+    manifest = out_dir(DUMP) / "manifest.json"
+    if not manifest.exists():
+        raise SystemExit(f"no delivery at {manifest}: run `musilogy run` first")
+    WEB_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for name in DELIVERED_TO_WEB:
+        shutil.copyfile(source / name, WEB_DATA_DIR / name)
+    shutil.copyfile(manifest, WEB_DATA_DIR / "manifest.json")
+    print("delivery copied to", WEB_DATA_DIR)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="musilogy")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -174,6 +197,7 @@ def main() -> None:
     subparsers.add_parser(
         "make-web-fixtures", help="publish the witness blobs the web reader tests read"
     )
+    subparsers.add_parser("sync-web", help="copy the current delivery into web/public/data/")
 
     args = parser.parse_args()
     if args.command == "run":
@@ -182,6 +206,8 @@ def main() -> None:
         make_fixtures()
     elif args.command == "make-web-fixtures":
         make_web_fixtures()
+    elif args.command == "sync-web":
+        sync_web()
 
 
 if __name__ == "__main__":
