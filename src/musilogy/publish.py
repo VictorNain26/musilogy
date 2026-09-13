@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import gzip
-import hashlib
 import json
 import struct
 import subprocess
@@ -158,24 +157,12 @@ def write_lineage_blob(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     return len(edges)
 
 
-def _mbid_bytes(mbid: str) -> bytes:
-    # A real MusicBrainz mbid is a canonical UUID and decodes straight to 16
-    # bytes. The synthetic fixtures built by tests/conftest.py use readable
-    # labels ("band-clean") as their mbid instead, so those fall back to a
-    # digest here rather than crash publish() on data that was never meant to
-    # look like a UUID in the first place.
-    try:
-        return bytes.fromhex(mbid.replace("-", ""))
-    except ValueError:
-        return hashlib.md5(mbid.encode(), usedforsecurity=False).digest()
-
-
 def write_frieze_ids(con: duckdb.DuckDBPyConnection, path: Path) -> int:
     """Raw 16-byte mbids in frieze row order, so the join back to frieze.bin
     needs no key. Written uncompressed: UUIDs are incompressible, and gzip here
     would only add a header."""
     rows = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
-    path.write_bytes(b"".join(_mbid_bytes(mbid) for (mbid,) in rows))
+    path.write_bytes(b"".join(bytes.fromhex(mbid.replace("-", "")) for (mbid,) in rows))
     return len(rows)
 
 

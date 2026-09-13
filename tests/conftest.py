@@ -29,10 +29,11 @@ def synthetic_artist(
     end: str | None,
     members: list[dict[str, Any]] | None = None,
     genres: list[dict[str, Any]] | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
     return {
         "mbid": mbid,
-        "name": mbid,
+        "name": name or mbid,
         "type": "Group",
         "begin": begin,
         "end": end,
@@ -70,6 +71,16 @@ def build_synthetic(tmp_path, artists, release_groups=(), **build_kwargs):
     return c
 
 
+# Valid UUIDs rather than readable labels: publish() writes raw 16-byte mbids
+# to frieze_ids.bin, so a witness that is not a UUID is not a witness of
+# anything this pipeline can deliver.
+BAND_EXCLUDED = "00000000-0000-4000-8000-000000000001"
+BAND_EXCLUDED_2 = "00000000-0000-4000-8000-000000000002"
+BAND_SMALL = "00000000-0000-4000-8000-000000000003"
+BAND_CLEAN = "00000000-0000-4000-8000-000000000004"
+BAND_ORPHAN = "00000000-0000-4000-8000-000000000005"
+
+
 def unreliable_genre_records():
     """Four genres that differ only in what the multi-artist rule costs them:
     `g-excluded` loses 250 candidate release-groups out of 250, `g-small` loses
@@ -82,38 +93,50 @@ def unreliable_genre_records():
     the same scenario and must not each invent their own."""
     artists = [
         synthetic_artist(
-            "band-excluded",
+            BAND_EXCLUDED,
             "1990",
             None,
             genres=[{"mbid": "g-excluded", "name": "excluded", "votes": 3}],
+            name="band-excluded",
         ),
         synthetic_artist(
-            "band-excluded-2",
+            BAND_EXCLUDED_2,
             "1995",
             None,
             genres=[{"mbid": "g-excluded", "name": "excluded", "votes": 3}],
+            name="band-excluded-2",
         ),
         synthetic_artist(
-            "band-small", "1990", None, genres=[{"mbid": "g-small", "name": "small", "votes": 2}]
+            BAND_SMALL,
+            "1990",
+            None,
+            genres=[{"mbid": "g-small", "name": "small", "votes": 2}],
+            name="band-small",
         ),
         synthetic_artist(
-            "band-clean", "1990", None, genres=[{"mbid": "g-clean", "name": "clean", "votes": 1}]
+            BAND_CLEAN,
+            "1990",
+            None,
+            genres=[{"mbid": "g-clean", "name": "clean", "votes": 1}],
+            name="band-clean",
         ),
         synthetic_artist(
-            "band-orphan", "1990", None, genres=[{"mbid": "g-orphan", "name": "orphan", "votes": 1}]
+            BAND_ORPHAN,
+            "1990",
+            None,
+            genres=[{"mbid": "g-orphan", "name": "orphan", "votes": 1}],
+            name="band-orphan",
         ),
     ]
     release_groups = [
         *(
-            synthetic_release_group(
-                f"rg-excluded-{i}", "band-excluded", "2000", co_artists=["guest"]
-            )
+            synthetic_release_group(f"rg-excluded-{i}", BAND_EXCLUDED, "2000", co_artists=["guest"])
             for i in range(250)
         ),
         *(
-            synthetic_release_group(f"rg-small-{i}", "band-small", "2000", co_artists=["guest"])
+            synthetic_release_group(f"rg-small-{i}", BAND_SMALL, "2000", co_artists=["guest"])
             for i in range(10)
         ),
-        *(synthetic_release_group(f"rg-clean-{i}", "band-clean", "2000") for i in range(250)),
+        *(synthetic_release_group(f"rg-clean-{i}", BAND_CLEAN, "2000") for i in range(250)),
     ]
     return artists, release_groups
