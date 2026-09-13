@@ -533,12 +533,13 @@ def test_frieze_blob_genre_ids_round_trip_through_the_published_vocabulary(con, 
     # genre_ids stores indices into web/genres.json.gz's row order, not mbids:
     # if the vocabulary were ever built in a different order on either side,
     # every genre in the blob would silently point at the wrong name.
-    path = tmp_path / "frieze.bin.gz"
-    write_frieze_blob(con, path)
-    blob = read_frieze_blob(gzip.decompress(path.read_bytes()))
-    vocabulary = [
-        r[0] for r in con.execute("SELECT genre_mbid FROM genres ORDER BY genre_mbid").fetchall()
-    ]
+    # The delivered file is read back as the expected vocabulary, never the
+    # SELECT write_frieze_blob itself uses: the two orders are fixed by two
+    # independent literals — a local one in publish.py, ORDER_BY["genres"] for
+    # the JSON — and re-deriving one of them here would compare it to itself.
+    publish(con, tmp_path, DUMP, None)
+    blob = read_frieze_blob(gzip.decompress((tmp_path / "web" / "frieze.bin.gz").read_bytes()))
+    vocabulary = read_web(tmp_path, "genres")["genre_mbid"]
     expected = con.execute(
         "SELECT f.i, coalesce(list_transform(b.genres, g -> g.mbid), []) "
         "FROM frieze f JOIN bands b ON b.mbid = f.mbid ORDER BY f.i"
