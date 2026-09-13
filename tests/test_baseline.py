@@ -66,11 +66,12 @@ BANDS_WITHOUT_ALBUM = 404_925
 # The frieze projection and its lineage graph. FRIEZE is density's population
 # seen band by band: if it diverges from the density population, one of the two
 # is wrong, and the frieze_population_mismatch invariant says which.
-# LINEAGE and LINEAGE_STRONG differ from the design spec's pre-implementation
-# estimate (37 322 and 5 340): the frieze eligibility fix in fa35878 (coalesced
-# y_end_declared, dropped dead genre guard, covered genre_ids) changed which
-# bands qualify without moving the total away from 84 262, and lineage depends
-# on that exact set through shared members, not on the count alone.
+# LINEAGE and LINEAGE_STRONG differ from the design spec's estimate (37 322 and
+# 5 340): the spec (2026-09-13-layer1-frieze-design.md) measured them on the
+# 84 722-band population, before the density_eligible filter, and calls them
+# upper bounds "à 0,5 % près". frieze already lands on the filtered 84 262
+# exactly; lineage inherits the same ~0.5 % reduction because the 460 bands
+# the filter drops take their edges with them.
 FRIEZE = 84_262
 LINEAGE = 37_136
 LINEAGE_STRONG = 5_311
