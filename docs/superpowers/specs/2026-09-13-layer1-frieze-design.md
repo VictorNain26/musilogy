@@ -8,9 +8,16 @@ Les chiffres cités ici sont **descriptifs**, mesurés sur le dump de référenc
 
 ## Objet
 
-Une frise qui montre la vie des genres musicaux dans le temps, et permet de
-descendre jusqu'aux groupes qui la composent. Deux échelles, un seul objet :
-la densité par genre en vue d'entrée, les artistes individuels au zoom.
+Une frise qui montre la vie des genres musicaux dans le temps, permet de
+descendre jusqu'aux groupes qui la composent, et **montre ce qui relie ces
+groupes entre eux**. Deux échelles, un seul objet : la densité par genre en vue
+d'entrée, les groupes et leur filiation au zoom.
+
+Le périmètre est la **musique populaire**. Le répertoire savant sort par la
+règle déjà mesurée en couche 0 : `density_eligible` écarte 13 genres que la
+règle du crédit unique détruit — `classical` perd 94,3 % de ses albums,
+`orchestral` 86,3 %. Le filtre coûte 460 groupes, la population de la frise
+passant de 84 722 à **84 262**.
 
 L'application et le pipeline vivent dans le même dépôt. Ce n'est pas une
 séparation de produit mais de responsabilité : le SQL arbitre, le Python
@@ -20,8 +27,8 @@ destinée à la frise.
 
 ## Ce que la mesure a établi
 
-Cinq mesures fondent les décisions qui suivent. Aucune n'était acquise avant
-d'être prise.
+Les décisions qui suivent reposent sur des mesures, pas sur des estimations.
+Aucune n'était acquise avant d'être prise.
 
 **La vue agrégée ne pèse rien.** `density` + le vocabulaire font 113 Ko gzip
 pour 52 201 cellules, 1 299 genres, 172 ans. Le tri introduit par la PR #4 y a
@@ -30,7 +37,8 @@ divisé `density.json.gz` par 9,4, de 655 709 à 70 106 octets.
 **La population plaçable est plus petite qu'annoncé.** 84 722 groupes sont à la
 fois de type `Group`, datés et porteurs d'un genre — pas les 380 866 lignes de
 `bands_timeline`, qui incluent tout ce qui n'a pas de genre. 186 071 paires
-groupe-genre en découlent.
+groupe-genre en découlent. Les tailles de blob citées plus bas sont mesurées sur
+ces 84 722 ; le filtre du répertoire savant les réduit de 0,5 %.
 
 **Le poids du JSON est celui de l'identité.** Sur les 16,31 Mo gzip de
 `bands_timeline`, `mbid` pèse 7,79 Mo (48 %) et `name` 3,09 Mo (19 %). Les UUID
@@ -46,14 +54,56 @@ facteur 106** : 1,12 Mo et 18 ms, contre 16,31 Mo et 953 ms pour le JSON
 format maison est retenu sur mesure, pas par réflexe, et il ne remplace rien :
 les cinq Parquet restent l'archive interopérable.
 
+## La filiation, et ce qui n'existe pas
+
+L'intention initiale était de montrer **les influences entre groupes**. La
+mesure a établi que cette donnée n'existe pas, et il faut le dire avant de
+décrire ce qui la remplace.
+
+| source | ce qu'elle porte | couverture mesurée |
+|---|---|---|
+| MusicBrainz | aucune relation d'influence | — |
+| Wikidata `P737` | influence déclarée | 624 groupes sur 682 447 |
+| DBpedia `influencedBy` | influence déclarée | 0 sur les `Band` |
+| ListenBrainz (similarité) | co-écoute | 35 % des groupes, dump figé en 2020 |
+| MLHD+ / listens complets | écoutes brutes | 222 à 240 Go |
+
+Personne ne maintient l'influence musicale en donnée ouverte. Ce n'est pas une
+limite du dump MusicBrainz, c'est un trou de l'écosystème.
+
+Ce qui existe, et massivement, c'est la **filiation** : `members` porte 601 759
+relations groupe-musicien, et deux groupes qui partagent un musicien sont
+reliés par un fait vérifiable. Sur la population de la frise : **39 031 paires
+relient 20 312 groupes**, dont 37 322 sont orientées dans le temps et 5 340
+portées par au moins deux musiciens.
+
+La frise montre donc une généalogie, pas des influences, et elle ne prétend pas
+au contraire. `Mothers of Invention (1964) → Ruben and the Jets (1972),
+9 musiciens communs` est opposable ; « X a influencé Y » ne le serait pas.
+C'est le principe directeur du README appliqué à un nouveau champ : la sortie
+n'affirme jamais plus que ce que la source porte.
+
+### Ce que l'extraction jette
+
+`extract.py` ne conserve qu'un type de relation, `member of band`. La
+documentation MusicBrainz en liste d'autres qui sont de la filiation directe —
+`subgroup`, `artist rename`, `founder`, `collaboration` — et que l'extraction
+supprime avant même le SQL. Leur volume n'est pas encore mesuré : le comptage
+demande de relire l'archive complète, il sera fait en instrumentant une
+extraction déjà nécessaire plutôt que dans un scan dédié.
+
 ## Architecture des données
 
 Deux fichiers produits par `publish.py`, à côté des projections existantes.
 
 `web/frieze.bin.gz` (~1,12 Mo) porte tout ce qu'il faut pour dessiner.
+`web/lineage.bin.gz` (~150 Ko) porte les 39 031 arêtes de filiation.
 `web/frieze_ids.bin.gz` (~1,35 Mo) porte les `mbid` bruts sur 16 octets, chargé
 au premier clic seulement : ils ne servent qu'à ouvrir MusicBrainz et sont
 incompressibles par nature.
+
+Au chargement : 113 Ko pour la vue agrégée, puis 1,27 Mo pour la frise détaillée
+et sa généalogie.
 
 ### Format de `frieze.bin`
 
@@ -75,6 +125,19 @@ Les groupes sont triés par `(y0, mbid)`, ce qui rend `spans` monotone sur sa
 première composante et le compresse bien. L'index de ligne est l'identité
 côté client ; `frieze_ids.bin` est aligné sur le même ordre, ce qui rend la
 jointure implicite.
+
+### Format de `lineage.bin`
+
+Une arête par enregistrement : `src` et `dst` en `u32` — les **index de ligne**
+de `frieze.bin`, pas des MBID —, puis `shared` en `u8`, le nombre de musiciens
+communs, saturé à 255. Les arêtes sont triées par `(src, dst)`, ce qui les
+rend groupables par source sans index séparé et les compresse bien : 0,35 Mo
+brut pour 150 Ko gzip.
+
+Seules les arêtes orientées sont publiées, `src` étant le groupe formé le
+premier. Deux groupes formés la même année ne produisent pas d'arête : la
+source ne dit pas lequel précède l'autre, et l'inventer serait une affirmation
+que la donnée ne porte pas.
 
 `genre_ids` indexe le vocabulaire de `web/genres.json.gz`, qui reste en JSON :
 1 348 entrées, 43 Ko, et il porte déjà `density_eligible` et les deux mesures
@@ -111,6 +174,13 @@ Deux échelles et une transition :
 - **détaillée** — une barre par groupe, de `y0` à `y_presence_end`. Jusqu'à
   10 527 barres pour `rock`, 84 722 si aucun genre n'est sélectionné.
 
+- **filiation** — les arcs ne sont pas dessinés en permanence : 39 031 arcs
+  simultanés font une pelote illisible. Ils s'allument à la sélection d'un
+  groupe, qui montre alors d'où viennent ses musiciens et où ils sont partis,
+  le reste de la frise passant en retrait. Chaque arc porte son nombre de
+  musiciens communs — sa preuve voyage avec lui, comme `y0_source` voyage avec
+  `y0`.
+
 Stratégie : dessin dans un bitmap hors écran, re-blitté au déplacement,
 redessiné au zoom et au changement de sélection. **Ce choix est à vérifier en
 conditions réelles** — si le redessin dépasse le budget d'image, le recours est
@@ -130,6 +200,28 @@ Conséquence sur le format : `y_end_source` et `ended` doivent voyager dans le
 blob. Deux bits par groupe suffisent, logés dans les deux bits hauts de
 `spans`, qui est donc non signé : une année de la fenêtre 1850-2026 tient dans
 les 14 bits restants, qui vont jusqu'à 16 383.
+
+## La co-écoute, en complément vivant
+
+L'API ListenBrainz `similar-artists` renvoie des artistes souvent écoutés
+ensemble, par MBID, et son en-tête `access-control-allow-origin: *` autorise
+l'appel direct depuis le navigateur, sans clé ni proxy — vérifié.
+
+Elle est appelée **au clic, depuis le front, jamais depuis le pipeline**. Une
+requête par groupe consulté au lieu de 682 447 : la couche 0 reste figée et
+reproductible, et la co-écoute arrive à jour plutôt que gelée au dump de 2020.
+Rien n'en est stocké ni publié.
+
+Ce qu'elle vaut, mesuré sur 40 groupes tirés au hasard de la population :
+14 réponses sur 40. Les groupes identifiables plafonnent à 100 similaires, les
+obscurs et **tous les groupes formés après 2020** rendent zéro. Le résultat est
+par ailleurs biaisé vers la popularité — Fleetwood Mac renvoie Bowie, les
+Beatles et les Stones, ce qui dit surtout qui est très écouté.
+
+Elle est donc présentée pour ce qu'elle est, sous l'intitulé « souvent écouté
+avec » et jamais « influencé par », dans un bloc distinct de la filiation.
+L'interface dit explicitement quand elle ne sait pas, plutôt que de laisser une
+absence de réponse passer pour une absence de liens.
 
 ## Ordre des genres
 
@@ -170,6 +262,11 @@ blob écrit et vérifie qu'il rend exactement les mêmes groupes que la table
 `bands`, spans et genres compris. C'est ce test qui empêche le format de
 dériver silencieusement.
 
+La table `lineage` reçoit ses propres invariants, dans la forme du dépôt : pas
+d'arête vers soi-même, pas de doublon `(src, dst)`, `src` antérieur à `dst`,
+et tout index présent dans la population de la frise. Chacun est une vue qui
+doit être vide, comme les autres de `90_invariants.sql`.
+
 **Côté front**, la lecture du blob est une fonction pure de `ArrayBuffer` vers
 des tableaux typés : elle se teste sans navigateur, sur un blob de témoins
 produit par la suite Python. Le rendu lui-même n'est pas testé pixel à pixel ;
@@ -180,9 +277,10 @@ La CI ajoute une étape Node à côté des étapes Python existantes.
 
 ## Hors périmètre
 
-`members` (601 759 relations) n'entre pas dans la frise. `bands_rest` — les
-groupes sans `y0`, non plaçables — non plus : ils ne sont pas sur une frise par
-définition. La recherche par nom parmi 84 722 entrées est un filtre linéaire de
+`members` n'est pas publié tel quel vers le front — ses 601 759 relations n'y
+ont pas d'usage — mais il n'est plus hors sujet pour autant : c'est lui qui
+produit `lineage.bin`, en couche 0. `bands_rest` — les groupes sans `y0`, non
+plaçables — reste dehors : ils ne sont pas sur une frise par définition. La recherche par nom parmi 84 722 entrées est un filtre linéaire de
 quelques millisecondes et n'appelle aucun index.
 
 `web/bands_timeline.json.gz` et `web/bands_rest.json.gz` deviennent sans
