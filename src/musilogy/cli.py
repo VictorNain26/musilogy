@@ -186,6 +186,14 @@ def sync_web() -> None:
     for name in DELIVERED_TO_WEB:
         shutil.copyfile(source / name, WEB_DATA_DIR / name)
     shutil.copyfile(manifest, WEB_DATA_DIR / "manifest.json")
+
+    # A file that leaves DELIVERED_TO_WEB must not survive the sync: it would
+    # stay versioned, get served and never be covered by a manifest digest.
+    kept = {*DELIVERED_TO_WEB, "manifest.json"}
+    for stale in WEB_DATA_DIR.iterdir():
+        if stale.is_file() and stale.name not in kept:
+            stale.unlink()
+
     print("delivery copied to", WEB_DATA_DIR)
 
 
