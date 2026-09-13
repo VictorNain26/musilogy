@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
-import { inflateIfGzipped } from "../src/blob/gzip";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { inflateIfGzipped, loadBlob } from "../src/blob/gzip";
 
 const PLAIN = new Uint8Array([0x4d, 0x46, 0x5a, 0x31, 0x01, 0x00, 0x00, 0x00]);
 
@@ -21,5 +21,30 @@ describe("inflateIfGzipped", () => {
     const buffer = await inflateIfGzipped(view);
     expect(buffer.byteLength).toBe(PLAIN.length);
     expect(new Uint8Array(buffer)).toEqual(PLAIN);
+  });
+});
+
+describe("loadBlob", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches and inflates a gzipped response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(gzipSync(PLAIN), { status: 200 })),
+    );
+    const buffer = await loadBlob("https://example.test/frieze.bin.gz");
+    expect(new Uint8Array(buffer)).toEqual(PLAIN);
+  });
+
+  it("names the url and the status when the response is not ok", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 404 })),
+    );
+    await expect(loadBlob("https://example.test/frieze.bin.gz")).rejects.toThrow(
+      /https:\/\/example\.test\/frieze\.bin\.gz: HTTP 404/,
+    );
   });
 });
