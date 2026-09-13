@@ -591,8 +591,9 @@ def test_frieze_ids_are_raw_sixteen_byte_uuids_in_row_order(con, tmp_path):
     written = write_frieze_ids(con, path)
     raw = path.read_bytes()
     assert len(raw) == written * 16
+    got = [raw[16 * k : 16 * (k + 1)].hex() for k in range(written)]
     expected = con.execute("SELECT mbid FROM frieze ORDER BY i").fetchall()
-    assert raw[:16].hex() == expected[0][0].replace("-", "")
+    assert got == [mbid.replace("-", "") for (mbid,) in expected]
 
 
 def test_publish_delivers_the_three_blobs_and_digests_them(con, tmp_path):
