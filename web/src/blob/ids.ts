@@ -21,6 +21,11 @@ export function readFriezeIds(buffer: ArrayBuffer): FriezeIds {
   }
 
   const count = view.getUint32(8, true);
+  const expectedSize = HEADER + 16 * count;
+  if (buffer.byteLength !== expectedSize) {
+    throw new Error(`frieze_ids.bin: expected ${expectedSize} bytes, got ${buffer.byteLength}`);
+  }
+
   const bytes = new Uint8Array(buffer, HEADER, count * 16);
   return {
     count,

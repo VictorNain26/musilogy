@@ -23,4 +23,11 @@ describe("readLineage", () => {
     new Uint8Array(buffer).set([0x4d, 0x46, 0x5a, 0x31]);
     expect(() => readLineage(buffer)).toThrow(/MLN1/);
   });
+
+  it("refuses a truncated lineage blob", async () => {
+    const bytes = new Uint8Array(readFileSync(new URL("fixtures/lineage.bin.gz", import.meta.url)));
+    const full = await inflateIfGzipped(bytes);
+    const truncated = full.slice(0, full.byteLength - 2);
+    expect(() => readLineage(truncated)).toThrow(/lineage.bin: expected 21 bytes, got 19/);
+  });
 });

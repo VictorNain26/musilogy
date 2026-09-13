@@ -27,4 +27,11 @@ describe("readFriezeIds", () => {
     new Uint8Array(buffer).set([0x4d, 0x46, 0x5a, 0x31]);
     expect(() => readFriezeIds(buffer)).toThrow(/MID1/);
   });
+
+  it("refuses a truncated frieze_ids blob", () => {
+    const bytes = new Uint8Array(readFileSync(new URL("fixtures/frieze_ids.bin", import.meta.url)));
+    const full = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const truncated = full.slice(0, full.byteLength - 5);
+    expect(() => readFriezeIds(truncated)).toThrow(/frieze_ids.bin: expected 336 bytes, got 331/);
+  });
 });

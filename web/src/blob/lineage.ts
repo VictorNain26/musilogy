@@ -21,6 +21,11 @@ export function readLineage(buffer: ArrayBuffer): Lineage {
   }
 
   const count = view.getUint32(8, true);
+  const expectedSize = 12 + 9 * count;
+  if (buffer.byteLength !== expectedSize) {
+    throw new Error(`lineage.bin: expected ${expectedSize} bytes, got ${buffer.byteLength}`);
+  }
+
   return {
     count,
     src: new Uint32Array(buffer, 12, count),
