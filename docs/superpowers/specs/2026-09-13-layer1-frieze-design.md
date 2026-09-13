@@ -8,16 +8,25 @@ Les chiffres cités ici sont **descriptifs**, mesurés sur le dump de référenc
 
 ## Objet
 
-Une frise qui montre la vie des genres musicaux dans le temps, permet de
-descendre jusqu'aux groupes qui la composent, et **montre ce qui relie ces
-groupes entre eux**. Deux échelles, un seul objet : la densité par genre en vue
-d'entrée, les groupes et leur filiation au zoom.
+Une frise où l'on cherche un groupe, où l'on voit d'un coup d'œil ceux qui
+vivaient en même temps, ceux d'avant et ceux d'après, et ce qui les relie.
+
+**L'objet est le groupe, pas le genre.** C'est le renversement qu'impose la
+contrainte de pixels mesurée plus bas : une vue d'entrée agrégée par genre
+cache précisément ce qu'on vient voir, et se révèle elle-même illisible. Le
+genre devient un filtre, et la densité agrégée un bandeau de contexte.
 
 Le périmètre est la **musique populaire**. Le répertoire savant sort par la
 règle déjà mesurée en couche 0 : `density_eligible` écarte 13 genres que la
 règle du crédit unique détruit — `classical` perd 94,3 % de ses albums,
 `orchestral` 86,3 %. Le filtre coûte 460 groupes, la population de la frise
 passant de 84 722 à **84 262**.
+
+**Les blobs portent ces 84 262**, la même population que `density`. Sans quoi
+vue d'ensemble et vue détaillée porteraient sur deux populations différentes,
+et `lineage.bin` — qui référence des index de ligne — deviendrait ambigu. Les
+tailles mesurées plus bas le sont sur 84 722 et sont donc des bornes hautes, à
+0,5 % près.
 
 L'application et le pipeline vivent dans le même dépôt. Ce n'est pas une
 séparation de produit mais de responsabilité : le SQL arbitre, le Python
@@ -29,6 +38,20 @@ destinée à la frise.
 
 Les décisions qui suivent reposent sur des mesures, pas sur des estimations.
 Aucune n'était acquise avant d'être prise.
+
+**L'écran est la vraie contrainte, pas le réseau.** Dans les ~950 px utiles
+d'un écran de 1080, on distingue 316 barres et on en étiquette 73. La frise
+compte 84 722 groupes, dont **26 693 simultanément actifs en 2014** : empilés à
+3 px, 84 hauteurs d'écran. `rock` seul en demande 33. L'axe du temps, lui, est
+confortable — 172 ans sur 1 820 px font 10,6 px par an, et les 22 496 barres
+d'un an restent lisibles. Le zoom temporel ne résout donc rien : il manque une
+réduction verticale d'un facteur 30 à 80, que ni le temps ni le genre ne
+donnent.
+
+**Une vue agrégée par genre serait illisible aussi.** 1 299 genres dans 950 px
+font 0,73 px par genre. Le pic médian d'un genre est de **6 groupes** et 756
+genres sur 1 299 culminent sous 10 : à épaisseur proportionnelle, 82 % des
+genres passent sous le pixel.
 
 **La vue agrégée ne pèse rien.** `density` + le vocabulaire font 113 Ko gzip
 pour 52 201 cellules, 1 299 genres, 172 ans. Le tri introduit par la PR #4 y a
@@ -74,8 +97,9 @@ limite du dump MusicBrainz, c'est un trou de l'écosystème.
 Ce qui existe, et massivement, c'est la **filiation** : `members` porte 601 759
 relations groupe-musicien, et deux groupes qui partagent un musicien sont
 reliés par un fait vérifiable. Sur la population de la frise : **39 031 paires
-relient 20 312 groupes**, dont 37 322 sont orientées dans le temps et 5 340
-portées par au moins deux musiciens.
+relient 20 312 groupes**. 37 322 sont orientées dans le temps — les 1 709
+autres joignent deux groupes formés la même année, et ne sont pas publiées.
+Parmi les orientées, 5 340 portent au moins deux musiciens communs.
 
 La frise montre donc une généalogie, pas des influences, et elle ne prétend pas
 au contraire. `Mothers of Invention (1964) → Ruben and the Jets (1972),
@@ -97,19 +121,20 @@ extraction déjà nécessaire plutôt que dans un scan dédié.
 Deux fichiers produits par `publish.py`, à côté des projections existantes.
 
 `web/frieze.bin.gz` (~1,12 Mo) porte tout ce qu'il faut pour dessiner.
-`web/lineage.bin.gz` (~150 Ko) porte les 39 031 arêtes de filiation.
-`web/frieze_ids.bin.gz` (~1,35 Mo) porte les `mbid` bruts sur 16 octets, chargé
-au premier clic seulement : ils ne servent qu'à ouvrir MusicBrainz et sont
-incompressibles par nature.
+`web/lineage.bin.gz` (~150 Ko) porte les 37 322 arêtes orientées de filiation.
+`web/frieze_ids.bin` (1,35 Mo) porte les `mbid` bruts sur 16 octets, chargé au
+premier clic seulement : ils ne servent qu'à ouvrir MusicBrainz. Publié sans
+gzip, qui ne gagne rien sur des UUID.
 
 Au chargement : 113 Ko pour la vue agrégée, puis 1,27 Mo pour la frise détaillée
 et sa généalogie.
 
 ### Format de `frieze.bin`
 
-Little-endian. **Les sections vont du type le plus large au plus étroit**, car
-un `TypedArray` dont l'offset n'est pas un multiple de la taille de son élément
-lève une `RangeError` — vérifié, ce n'est pas une précaution de style.
+Little-endian. **Chaque section commence à un offset multiple de la
+taille de son élément**, car un `TypedArray` construit ailleurs lève une
+`RangeError` — vérifié, ce n'est pas une précaution de style. L'ordre ci-dessous
+respecte cet invariant ; c'est lui qui fait foi, pas l'ordre.
 
 | section | type | longueur | rôle |
 |---|---|---|---|
@@ -119,6 +144,7 @@ lève une `RangeError` — vérifié, ce n'est pas une précaution de style.
 | `genre_offsets` | `u32` | `n+1` | bornes dans `genre_ids` |
 | `spans` | `u16` | `2n` | `y0`, `y_presence_end` + 2 bits de drapeaux |
 | `genre_ids` | `u16` | `n_pairs` | index dans le vocabulaire |
+| `n_albums` | `u8` | `n` | albums, saturé à 255 — le critère de tri |
 | `names` | UTF-8 | reste | noms concaténés |
 
 Les groupes sont triés par `(y0, mbid)`, ce qui rend `spans` monotone sur sa
@@ -161,18 +187,56 @@ Le chemin versionné est `web/public/data/`, alimenté depuis
 `data/out/<dump>/web/` par une commande explicite — jamais par le pipeline
 lui-même, qui doit rester capable de tourner sans toucher au dépôt.
 
+## Recherche
+
+Chercher un groupe est l'un des deux gestes principaux, pas une commodité. Le
+format porte déjà tout ce qu'il faut : `names` et `name_offsets`. Un balayage
+normalisé sur ~1 Mo de noms tient en quelques millisecondes, donc aucun index
+n'est nécessaire — ce qui manque n'est pas la performance, c'est l'interface.
+
+**Ce qu'on obtient.** Une liste de résultats portant le nom, l'année de
+formation et le genre principal. Ces deux qualificatifs ne sont pas décoratifs :
+7 363 groupes de la frise portent un nom que partage au moins un autre, et
+certains vont loin — `Apocalypse` est porté par seize groupes. Un résultat sans
+date ni genre serait inutilisable. Les trois champs sont déjà dans le blob.
+
+**Ce qui se passe ensuite**, et c'est là que la recherche rejoint la frise : le
+résultat choisi recentre la fenêtre temporelle sur son `y0` et met le groupe en
+évidence. Ses contemporains sont là par construction, ses prédécesseurs à
+gauche, ses successeurs à droite. Le même geste sert la recherche et la lecture
+du voisinage.
+
+**Normalisation.** Casse et diacritiques doivent être neutralisées, sans quoi
+`Sigur Rós` et `Mötley Crüe` ne se trouvent pas. Fait au chargement plutôt que
+publié en double : une seconde copie normalisée des noms coûterait ~250 Ko
+gzip, alors que normaliser 84 262 chaînes une fois à l'ouverture coûte quelques
+dizaines de millisecondes — à mesurer, et à basculer côté publication si la
+mesure dément.
+
 ## Rendu
 
 Canvas 2D, sans bibliothèque. Les échelles d'une frise sont deux fonctions
 affines et les axes quelques traits : `d3-scale` tirerait quatre dépendances,
 figées depuis 2021, pour ce que dix lignes font.
 
-Deux échelles et une transition :
+**Une seule vue, pas deux modes.** Une fenêtre temporelle — 30 ans par défaut,
+soit ~60 px par an — montre les groupes qui y vivent, en couloirs empilés :
+deux groupes dont les périodes ne se chevauchent pas partagent une ligne. À
+13 px par couloir, l'étiquette est lisible et l'écran en tient ~70.
 
-- **agrégée** — une bande par genre, épaisseur proportionnelle au nombre de
-  groupes actifs l'année considérée. 52 201 cellules, tout en mémoire.
-- **détaillée** — une barre par groupe, de `y0` à `y_presence_end`. Jusqu'à
-  10 527 barres pour `rock`, 84 722 si aucun genre n'est sélectionné.
+Comme 26 693 groupes peuvent coexister, **il faut choisir lesquels montrer**.
+Le critère est le nombre d'albums : une donnée que la source porte, pas un
+jugement de notoriété qu'il faudrait inventer. Les N premiers de la fenêtre
+sont affichés (N de l'ordre de 100 à 300 selon la hauteur disponible), et un
+compteur dit combien d'autres existent — une absence à l'écran ne doit jamais
+se lire comme une absence dans les données.
+
+Trois couches se superposent dans cette vue :
+
+- **le bandeau de densité**, ~80 px en haut, la masse totale par année. Il coûte
+  113 Ko et dit « voici les 26 693 dont vous voyez 300 ».
+- **les groupes**, barres étiquetées de `y0` à `y_presence_end`.
+- **la filiation**, à la sélection.
 
 - **filiation** — les arcs ne sont pas dessinés en permanence : 39 031 arcs
   simultanés font une pelote illisible. Ils s'allument à la sélection d'un
@@ -185,6 +249,18 @@ Stratégie : dessin dans un bitmap hors écran, re-blitté au déplacement,
 redessiné au zoom et au changement de sélection. **Ce choix est à vérifier en
 conditions réelles** — si le redessin dépasse le budget d'image, le recours est
 WebGL, et la décision se prendra sur une mesure, pas sur une intuition.
+
+### La falaise qui n'existe pas
+
+Le bandeau de densité chute de 67 567 en 2016 à 11 276 en 2026, soit −83 % en
+dix ans. Le README établit que c'est presque entièrement un artefact : 82,7 %
+des groupes formés depuis 2023 ne portent aucun genre, et la densité près du
+présent est doublement une borne basse. Affichée telle quelle, cette courbe
+serait le mensonge le plus visible de la frise, dès l'ouverture.
+
+Le bandeau s'arrête donc à une année de coupure, au-delà de laquelle la mesure
+n'est plus comparable, et la zone restante est marquée comme incomplète plutôt
+que tracée. La valeur de coupure se mesure, elle ne se choisit pas à l'œil.
 
 ### Le piège de rendu que la couche 0 signale
 
@@ -235,6 +311,13 @@ genres, 2,08 en moyenne, et 7 347 paires de genres co-occurrent sur au moins
 5 groupes — le signal existe. L'ordre est calculé en couche 0, publié comme une
 colonne du vocabulaire, et testé comme le reste.
 
+L'algorithme de sériation reste à choisir, sous une contrainte que le dépôt ne
+peut pas relâcher : la plupart des méthodes produisent des ex æquo dont la
+résolution dépend de l'ordre d'itération, ce qui casserait la reproductibilité
+octet à octet acquise par les PR #4 et #5. Le départage doit donc être explicite
+et total. Ajouter cette colonne à `genres` déplace par ailleurs `output_sha256`
+et la ligne de base : c'est un changement de contrat, à faire dans sa PR.
+
 Ce n'est pas une hiérarchie et ne s'en donne pas l'air : c'est un ordre qui met
 les voisins côte à côte. La donnée ne porte pas de taxonomie et la frise n'en
 inventera pas.
@@ -273,6 +356,12 @@ produit par la suite Python. Le rendu lui-même n'est pas testé pixel à pixel 
 ce qui est testé est ce qui se trompe — la projection année vers pixel, la
 sélection d'un genre, et la règle de fin inconnue.
 
+Les blobs étant versionnés, la suite rapide doit vérifier qu'ils correspondent
+au code : elle compare leur SHA-256 à l'`output_sha256` du manifeste commité.
+Sans ce contrôle, un blob commité peut diverger du pipeline sans que rien ne le
+voie, puisque le test qui relit le blob écrit exige le dump et ne tourne que
+dans la suite lente.
+
 La CI ajoute une étape Node à côté des étapes Python existantes.
 
 ## Hors périmètre
@@ -280,8 +369,7 @@ La CI ajoute une étape Node à côté des étapes Python existantes.
 `members` n'est pas publié tel quel vers le front — ses 601 759 relations n'y
 ont pas d'usage — mais il n'est plus hors sujet pour autant : c'est lui qui
 produit `lineage.bin`, en couche 0. `bands_rest` — les groupes sans `y0`, non
-plaçables — reste dehors : ils ne sont pas sur une frise par définition. La recherche par nom parmi 84 722 entrées est un filtre linéaire de
-quelques millisecondes et n'appelle aucun index.
+plaçables — reste dehors : ils ne sont pas sur une frise par définition.
 
 `web/bands_timeline.json.gz` et `web/bands_rest.json.gz` deviennent sans
 consommateur une fois le blob en place. Leur retrait est un changement de
