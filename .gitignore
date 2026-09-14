@@ -1,8 +1,9 @@
-data/
+/data/
 *.parquet
 *.jsonl
 !tests/fixtures/*.jsonl
 *.tar.xz
 node_modules/
+web/dist/
 __pycache__/
 .venv/

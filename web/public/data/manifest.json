@@ -1,0 +1,69 @@
+{
+ "dump": "20260909-001002",
+ "archive_sha256": {
+  "artist.tar.xz": "a68940e911830f65ff412275f4ba8a9100569cba1f677bdd6e6c091938e452f2",
+  "release-group.tar.xz": "38de1e46c25b6b6e5acc051e3ab359ed13e873056e1ddfe4aae75fe2e642124f"
+ },
+ "counts": {
+  "bands": 682447,
+  "albums": 643403,
+  "genres": 1348,
+  "density": 52201,
+  "members": 601759,
+  "frieze": 84262,
+  "lineage": 37136
+ },
+ "output_sha256": {
+  "albums.parquet": "1c08043800f1497a6d97fd219e85943fd782d8b1a73ea421ad0bce24f28c0770",
+  "bands.parquet": "657611c2350d2aa2fbd8636f7954242756bad1d69c419625de7409079814cb99",
+  "density.parquet": "d4b6747980bbdf40a595cf8bd2af34db65fc2502f9818771b7b6008ade44e1f1",
+  "genres.parquet": "2d7ccf2a89469029407143fe42f0594050de0b253c18a4620bd0dfed5740727a",
+  "members.parquet": "3e24ba95cf445e5b126f6d67425bea0c53e1ce7f5c5892c9b74db4c43febc403",
+  "web/bands_rest.json.gz": "a73d84e7cb1b669a9649d86fd5e84ec351c44ac5e54f9ecf0ed8a3c53b38d5fa",
+  "web/bands_timeline.json.gz": "d6fdacfbef7e2f1d5e2eb5864b10b2b2d623ab8f4a99a78dac57f19d2dfaa869",
+  "web/density.json.gz": "0a0328d755d28c5d673b21266eb82f62e9735e8152d82185f45d000a7f90c791",
+  "web/frieze.bin.gz": "ce23804e33867c3f64e9f257828f2ee341c24c39c928f382be33aa79535f09a6",
+  "web/frieze_ids.bin": "03b9c5335327aa7d30ceeaaf0573aa7e59d220076278ace5dabb975ed470d4b4",
+  "web/genres.json.gz": "26d54e2af5987da2b3c323d088b80e44333d93197e30a485a5fe4c4d1d6c3e62",
+  "web/lineage.bin.gz": "e1c9ec1f0f2d5d502b85a3fae7a819f13128c66c6883ed9bbd403af4b037411c"
+ },
+ "parameters": {
+  "dump_year": 2026,
+  "min_year": 1850,
+  "multi_artist_drop_limit": 50.0,
+  "min_candidate_credits": 200
+ },
+ "inputs": {
+  "rows_loaded": {
+   "raw_artists": 682447,
+   "raw_release_groups": 2317879
+  },
+  "extraction": {
+   "artists_kept": 682447,
+   "artists_dropped": 2297858,
+   "release_groups_kept": 2317879,
+   "release_groups_dropped": 2189386
+  },
+  "extraction_matches_rows_loaded": true
+ },
+ "r2_anomalies": {
+  "begin_illegible": 34,
+  "end_illegible": 7,
+  "begin_future": 15,
+  "end_future": 3,
+  "begin_below_min_year": 258,
+  "end_below_min_year": 4,
+  "end_before_begin": 2
+ },
+ "neutralised_inferences": {
+  "first_album_after_declared_end": 81,
+  "last_album_before_declared_begin": 271,
+  "first_album_with_begin_below_min_year": 73
+ },
+ "density_exclusions": {
+  "genres": 13,
+  "band_genre_pairs": 1554
+ },
+ "git_sha": "87118a3f2abaa84ef090e0a3091e4cf48c7cd522",
+ "corrections_sha256": "19c494cb249839cf1f98e082de177fecc7c3252f261c24ca183360684bf741b7"
+}
